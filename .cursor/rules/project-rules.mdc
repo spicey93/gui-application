@@ -1,0 +1,17 @@
+---
+alwaysApply: true
+---
+
+
+- Always try to keep it as simple as possible.
+- Avoid repeating yourself with code and refactor when files start to get too large.
+- Make sure we have tests in place for core features and systems so we avoid breaking anything.
+- Model, view, controller file structure.
+- Always try to build in a way that is modular and scalable.
+- Try to keep code tidy and organised.
+- Move utility scripts into the scripts directory to keep the main directory clean
+- Keep the application lightweight
+- Aim for a clean, simple ui layout
+- Test driven development
+- Local storage with sqlite
+- Use python

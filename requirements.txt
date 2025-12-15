@@ -1,0 +1,4 @@
+# No external dependencies required
+# Uses only Python standard library:
+# - tkinter (GUI)
+# - sqlite3 (Database)
