@@ -1,4 +1,5 @@
-# No external dependencies required
-# Uses only Python standard library:
-# - tkinter (GUI)
+# GUI Framework
+PySide6>=6.5.0
+
+# Database (Python standard library)
 # - sqlite3 (Database)

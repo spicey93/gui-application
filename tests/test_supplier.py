@@ -3,6 +3,7 @@ import unittest
 import os
 import tempfile
 from models.supplier import Supplier
+from models.user import User
 
 
 class TestSupplier(unittest.TestCase):
@@ -14,6 +15,14 @@ class TestSupplier(unittest.TestCase):
         self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         self.temp_db.close()
         self.supplier_model = Supplier(db_path=self.temp_db.name)
+        self.user_model = User(db_path=self.temp_db.name)
+        
+        # Create a test user
+        self.user_model.create_user("testuser", "password123")
+        # Get user_id
+        success, _, user_id = self.user_model.authenticate("testuser", "password123")
+        self.assertTrue(success)
+        self.user_id = user_id
     
     def tearDown(self):
         """Clean up after tests."""
@@ -22,127 +31,126 @@ class TestSupplier(unittest.TestCase):
     
     def test_create_supplier_success(self):
         """Test successful supplier creation."""
-        success, message = self.supplier_model.create("ACC001", "Test Supplier")
+        success, message = self.supplier_model.create("ACC001", "Test Supplier", self.user_id)
         self.assertTrue(success)
         self.assertIn("created successfully", message)
     
     def test_create_supplier_duplicate_account_number(self):
         """Test creating supplier with duplicate account number."""
-        self.supplier_model.create("ACC001", "Supplier 1")
-        success, message = self.supplier_model.create("ACC001", "Supplier 2")
+        self.supplier_model.create("ACC001", "Supplier 1", self.user_id)
+        success, message = self.supplier_model.create("ACC001", "Supplier 2", self.user_id)
         self.assertFalse(success)
         self.assertIn("already exists", message)
     
     def test_create_supplier_empty_fields(self):
         """Test creating supplier with empty fields."""
-        success, message = self.supplier_model.create("", "Test Supplier")
+        success, message = self.supplier_model.create("", "Test Supplier", self.user_id)
         self.assertFalse(success)
         self.assertIn("required", message)
         
-        success, message = self.supplier_model.create("ACC001", "")
+        success, message = self.supplier_model.create("ACC001", "", self.user_id)
         self.assertFalse(success)
         self.assertIn("required", message)
     
     def test_get_all_suppliers(self):
         """Test getting all suppliers."""
         # Initially empty
-        suppliers = self.supplier_model.get_all()
+        suppliers = self.supplier_model.get_all(self.user_id)
         self.assertEqual(len(suppliers), 0)
         
         # Add suppliers
-        self.supplier_model.create("ACC001", "Supplier 1")
-        self.supplier_model.create("ACC002", "Supplier 2")
+        self.supplier_model.create("ACC001", "Supplier 1", self.user_id)
+        self.supplier_model.create("ACC002", "Supplier 2", self.user_id)
         
-        suppliers = self.supplier_model.get_all()
+        suppliers = self.supplier_model.get_all(self.user_id)
         self.assertEqual(len(suppliers), 2)
         self.assertEqual(suppliers[0]['account_number'], "ACC001")
         self.assertEqual(suppliers[1]['account_number'], "ACC002")
     
     def test_get_supplier_by_id(self):
         """Test getting supplier by ID."""
-        self.supplier_model.create("ACC001", "Test Supplier")
-        suppliers = self.supplier_model.get_all()
+        self.supplier_model.create("ACC001", "Test Supplier", self.user_id)
+        suppliers = self.supplier_model.get_all(self.user_id)
         supplier_id = suppliers[0]['id']
         
-        supplier = self.supplier_model.get_by_id(supplier_id)
+        supplier = self.supplier_model.get_by_id(supplier_id, self.user_id)
         self.assertIsNotNone(supplier)
         self.assertEqual(supplier['account_number'], "ACC001")
         self.assertEqual(supplier['name'], "Test Supplier")
     
     def test_get_supplier_by_id_not_found(self):
         """Test getting non-existent supplier."""
-        supplier = self.supplier_model.get_by_id(999)
+        supplier = self.supplier_model.get_by_id(999, self.user_id)
         self.assertIsNone(supplier)
     
     def test_update_supplier_success(self):
         """Test successful supplier update."""
-        self.supplier_model.create("ACC001", "Old Name")
-        suppliers = self.supplier_model.get_all()
+        self.supplier_model.create("ACC001", "Old Name", self.user_id)
+        suppliers = self.supplier_model.get_all(self.user_id)
         supplier_id = suppliers[0]['id']
         
-        success, message = self.supplier_model.update(supplier_id, "ACC001", "New Name")
+        success, message = self.supplier_model.update(supplier_id, "ACC001", "New Name", self.user_id)
         self.assertTrue(success)
         self.assertIn("updated successfully", message)
         
-        supplier = self.supplier_model.get_by_id(supplier_id)
+        supplier = self.supplier_model.get_by_id(supplier_id, self.user_id)
         self.assertEqual(supplier['name'], "New Name")
     
     def test_update_supplier_account_number(self):
         """Test updating supplier account number."""
-        self.supplier_model.create("ACC001", "Supplier 1")
-        suppliers = self.supplier_model.get_all()
+        self.supplier_model.create("ACC001", "Supplier 1", self.user_id)
+        suppliers = self.supplier_model.get_all(self.user_id)
         supplier_id = suppliers[0]['id']
         
-        success, message = self.supplier_model.update(supplier_id, "ACC002", "Supplier 1")
+        success, message = self.supplier_model.update(supplier_id, "ACC002", "Supplier 1", self.user_id)
         self.assertTrue(success)
         
-        supplier = self.supplier_model.get_by_id(supplier_id)
+        supplier = self.supplier_model.get_by_id(supplier_id, self.user_id)
         self.assertEqual(supplier['account_number'], "ACC002")
     
     def test_update_supplier_duplicate_account_number(self):
         """Test updating to duplicate account number."""
-        self.supplier_model.create("ACC001", "Supplier 1")
-        self.supplier_model.create("ACC002", "Supplier 2")
+        self.supplier_model.create("ACC001", "Supplier 1", self.user_id)
+        self.supplier_model.create("ACC002", "Supplier 2", self.user_id)
         
-        suppliers = self.supplier_model.get_all()
+        suppliers = self.supplier_model.get_all(self.user_id)
         supplier_id = suppliers[0]['id']
         
-        success, message = self.supplier_model.update(supplier_id, "ACC002", "Supplier 1")
+        success, message = self.supplier_model.update(supplier_id, "ACC002", "Supplier 1", self.user_id)
         self.assertFalse(success)
         self.assertIn("already exists", message)
     
     def test_update_supplier_not_found(self):
         """Test updating non-existent supplier."""
-        success, message = self.supplier_model.update(999, "ACC001", "Test")
+        success, message = self.supplier_model.update(999, "ACC001", "Test", self.user_id)
         self.assertFalse(success)
         self.assertIn("not found", message)
     
     def test_delete_supplier_success(self):
         """Test successful supplier deletion."""
-        self.supplier_model.create("ACC001", "Test Supplier")
-        suppliers = self.supplier_model.get_all()
+        self.supplier_model.create("ACC001", "Test Supplier", self.user_id)
+        suppliers = self.supplier_model.get_all(self.user_id)
         supplier_id = suppliers[0]['id']
         
-        success, message = self.supplier_model.delete(supplier_id)
+        success, message = self.supplier_model.delete(supplier_id, self.user_id)
         self.assertTrue(success)
         self.assertIn("deleted successfully", message)
         
-        suppliers = self.supplier_model.get_all()
+        suppliers = self.supplier_model.get_all(self.user_id)
         self.assertEqual(len(suppliers), 0)
     
     def test_delete_supplier_not_found(self):
         """Test deleting non-existent supplier."""
-        success, message = self.supplier_model.delete(999)
+        success, message = self.supplier_model.delete(999, self.user_id)
         self.assertFalse(success)
         self.assertIn("not found", message)
     
     def test_supplier_exists(self):
         """Test checking if supplier exists."""
-        self.assertFalse(self.supplier_model.exists("ACC001"))
-        self.supplier_model.create("ACC001", "Test Supplier")
-        self.assertTrue(self.supplier_model.exists("ACC001"))
+        self.assertFalse(self.supplier_model.exists("ACC001", self.user_id))
+        self.supplier_model.create("ACC001", "Test Supplier", self.user_id)
+        self.assertTrue(self.supplier_model.exists("ACC001", self.user_id))
 
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -2,7 +2,6 @@
 alwaysApply: true
 ---
 
-
 - Always try to keep it as simple as possible.
 - Avoid repeating yourself with code and refactor when files start to get too large.
 - Make sure we have tests in place for core features and systems so we avoid breaking anything.
@@ -13,5 +12,14 @@ alwaysApply: true
 - Keep the application lightweight
 - Aim for a clean, simple ui layout
 - Test driven development
-- Local storage with sqlite
-- Use python
+- Use type hints for all function parameters and return values
+- Use context managers (with statements) for database connections to ensure proper cleanup
+- Never expose raw exception messages to users - show user-friendly error messages instead
+- Use Qt signals and slots for communication between components (never direct method calls across MVC boundaries)
+- Keep views focused on UI only - all business logic belongs in controllers
+- Validate user input in controllers, not just in views
+- Use constants or config files for magic numbers and repeated strings
+- Ensure all interactive elements are keyboard accessible
+- Add docstrings to all public methods and classes
+- Keep functions small and focused on a single responsibility
+- Use logging instead of print statements for debugging and error tracking

@@ -1,132 +1,153 @@
 """Dashboard view GUI."""
-import tkinter as tk
-from tkinter import ttk
-from typing import Callable, Optional
+from PySide6.QtWidgets import (
+    QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
+    QPushButton, QFrame
+)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeyEvent
+from views.shortcuts_dialog import ShortcutsDialog
 
 
-class DashboardView:
+class DashboardView(QWidget):
     """Dashboard/home page GUI."""
     
-    def __init__(self, root: tk.Tk):
+    # Signals
+    logout_requested = Signal()
+    suppliers_requested = Signal()
+    
+    def __init__(self):
         """Initialize the dashboard view."""
-        self.root = root
-        
-        # Callbacks
-        self.logout_callback: Optional[Callable[[], None]] = None
-        self.suppliers_callback: Optional[Callable[[], None]] = None
-        
-        # Current username
-        self.current_username: Optional[str] = None
-        
-        # Create container frame (initially hidden)
-        self.frame = ttk.Frame(self.root)
-        self.frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.frame.grid_remove()
-        
-        # Create UI
+        super().__init__()
+        self.current_username: str = ""
         self._create_widgets()
+        self._setup_keyboard_navigation()
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
-        # Configure grid weights
-        self.frame.columnconfigure(0, weight=0)  # Navigation panel (fixed width)
-        self.frame.columnconfigure(1, weight=1)  # Content area (expands)
-        self.frame.rowconfigure(0, weight=1)
+        main_layout = QHBoxLayout(self)
+        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(0, 0, 0, 0)
         
         # Navigation panel (left sidebar)
-        nav_panel = ttk.Frame(self.frame, padding="10")
-        nav_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 2))
-        nav_panel.configure(relief="raised", borderwidth=1)
+        nav_panel = QFrame()
+        nav_panel.setObjectName("navPanel")
+        nav_panel.setFixedWidth(180)
+        nav_panel.setFrameShape(QFrame.Shape.StyledPanel)
+        nav_panel.setFrameShadow(QFrame.Shadow.Raised)
+        
+        nav_layout = QVBoxLayout(nav_panel)
+        nav_layout.setSpacing(10)
+        nav_layout.setContentsMargins(15, 15, 15, 15)
         
         # Navigation title
-        nav_title = ttk.Label(
-            nav_panel,
-            text="Navigation",
-            font=("Arial", 12, "bold")
-        )
-        nav_title.grid(row=0, column=0, pady=(0, 20), sticky=tk.W)
+        nav_title = QLabel("Navigation")
+        nav_title.setStyleSheet("font-weight: bold; font-size: 12px;")
+        nav_layout.addWidget(nav_title)
+        
+        nav_layout.addSpacing(10)
         
         # Dashboard menu item
-        self.dashboard_button = ttk.Button(
-            nav_panel,
-            text="Dashboard",
-            command=self._handle_dashboard,
-            width=18
-        )
-        self.dashboard_button.grid(row=1, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.dashboard_button = QPushButton("Dashboard")
+        self.dashboard_button.setMinimumHeight(30)
+        self.dashboard_button.clicked.connect(self._handle_dashboard)
+        nav_layout.addWidget(self.dashboard_button)
         
         # Suppliers menu item
-        self.suppliers_button = ttk.Button(
-            nav_panel,
-            text="Suppliers",
-            command=self._handle_suppliers,
-            width=18
-        )
-        self.suppliers_button.grid(row=2, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.suppliers_button = QPushButton("Suppliers")
+        self.suppliers_button.setMinimumHeight(30)
+        self.suppliers_button.clicked.connect(self._handle_suppliers)
+        nav_layout.addWidget(self.suppliers_button)
+        
+        nav_layout.addSpacing(15)
         
         # Separator
-        nav_separator = ttk.Separator(nav_panel, orient="horizontal")
-        nav_separator.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=15)
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        nav_layout.addWidget(separator)
+        
+        nav_layout.addSpacing(15)
         
         # Logout menu item
-        self.logout_button = ttk.Button(
-            nav_panel,
-            text="Logout",
-            command=self._handle_logout,
-            width=18
-        )
-        self.logout_button.grid(row=4, column=0, pady=5, sticky=(tk.W, tk.E))
+        self.logout_button = QPushButton("Logout")
+        self.logout_button.setMinimumHeight(30)
+        self.logout_button.clicked.connect(self._handle_logout)
+        nav_layout.addWidget(self.logout_button)
         
-        # Configure navigation panel column
-        nav_panel.columnconfigure(0, weight=1)
-        
-        # Content area (right side)
-        content_frame = ttk.Frame(self.frame, padding="30")
-        content_frame.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S))
-        content_frame.columnconfigure(0, weight=1)
-        content_frame.rowconfigure(0, weight=1)
-        
-        # Content container
-        content_container = ttk.Frame(content_frame)
-        content_container.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        content_container.columnconfigure(0, weight=1)
-        
-        # Welcome label
-        self.welcome_label = ttk.Label(
-            content_container,
-            text="Welcome!",
-            font=("Arial", 24, "bold")
-        )
-        self.welcome_label.grid(row=0, column=0, pady=(0, 20), sticky=tk.W)
-        
-        # User info
-        self.user_info_label = ttk.Label(
-            content_container,
-            text="",
-            font=("Arial", 10)
-        )
-        self.user_info_label.grid(row=1, column=0, pady=(0, 30), sticky=tk.W)
+        nav_layout.addSpacing(15)
         
         # Separator
-        separator = ttk.Separator(content_container, orient="horizontal")
-        separator.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=20)
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.Shape.HLine)
+        separator2.setFrameShadow(QFrame.Shadow.Sunken)
+        nav_layout.addWidget(separator2)
+        
+        nav_layout.addSpacing(15)
+        
+        # Help/Shortcuts button
+        self.help_button = QPushButton("Keyboard Shortcuts")
+        self.help_button.setMinimumHeight(30)
+        self.help_button.clicked.connect(self._handle_help)
+        nav_layout.addWidget(self.help_button)
+        
+        nav_layout.addStretch()
+        
+        # Add navigation panel to main layout
+        main_layout.addWidget(nav_panel)
+        
+        # Content area (right side)
+        content_frame = QWidget()
+        content_layout = QVBoxLayout(content_frame)
+        content_layout.setSpacing(20)
+        content_layout.setContentsMargins(40, 40, 40, 40)
+        
+        # Welcome label
+        self.welcome_label = QLabel("Welcome!")
+        self.welcome_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        content_layout.addWidget(self.welcome_label)
+        
+        # User info
+        self.user_info_label = QLabel("")
+        self.user_info_label.setStyleSheet("font-size: 10px;")
+        content_layout.addWidget(self.user_info_label)
+        
+        content_layout.addSpacing(20)
+        
+        # Separator
+        content_separator = QFrame()
+        content_separator.setFrameShape(QFrame.Shape.HLine)
+        content_separator.setFrameShadow(QFrame.Shadow.Sunken)
+        content_layout.addWidget(content_separator)
+        
+        content_layout.addSpacing(20)
         
         # Dashboard content
-        info_label = ttk.Label(
-            content_container,
-            text="You have successfully logged in.",
-            font=("Arial", 12)
-        )
-        info_label.grid(row=3, column=0, pady=20, sticky=tk.W)
+        info_label = QLabel("You have successfully logged in.")
+        info_label.setStyleSheet("font-size: 12px;")
+        content_layout.addWidget(info_label)
         
         # Placeholder for future dashboard content
-        placeholder_label = ttk.Label(
-            content_container,
-            text="Dashboard content goes here...",
-            font=("Arial", 10),
-            foreground="gray"
-        )
-        placeholder_label.grid(row=4, column=0, pady=10, sticky=tk.W)
+        placeholder_label = QLabel("Dashboard content goes here...")
+        placeholder_label.setStyleSheet("font-size: 10px; color: gray;")
+        content_layout.addWidget(placeholder_label)
+        
+        content_layout.addStretch()
+        
+        # Add content area to main layout
+        main_layout.addWidget(content_frame, stretch=1)
+    
+    def _setup_keyboard_navigation(self):
+        """Set up keyboard navigation."""
+        # Tab order: Dashboard -> Suppliers -> Logout -> Help
+        self.setTabOrder(self.dashboard_button, self.suppliers_button)
+        self.setTabOrder(self.suppliers_button, self.logout_button)
+        self.setTabOrder(self.logout_button, self.help_button)
+        
+        # Arrow keys for navigation panel
+        self.dashboard_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.suppliers_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.logout_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.help_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     
     def _handle_dashboard(self):
         """Handle dashboard button click."""
@@ -135,33 +156,19 @@ class DashboardView:
     
     def _handle_suppliers(self):
         """Handle suppliers button click."""
-        if self.suppliers_callback:
-            self.suppliers_callback()
+        self.suppliers_requested.emit()
     
     def _handle_logout(self):
         """Handle logout button click."""
-        if self.logout_callback:
-            self.logout_callback()
+        self.logout_requested.emit()
     
-    def set_logout_callback(self, callback: Callable[[], None]):
-        """Set the callback function for logout."""
-        self.logout_callback = callback
-    
-    def set_suppliers_callback(self, callback: Callable[[], None]):
-        """Set the callback function for suppliers navigation."""
-        self.suppliers_callback = callback
+    def _handle_help(self):
+        """Handle help button click."""
+        dialog = ShortcutsDialog(self)
+        dialog.exec()
     
     def set_username(self, username: str):
         """Set the current username and update display."""
         self.current_username = username
-        self.welcome_label.config(text=f"Welcome, {username}!")
-        self.user_info_label.config(text=f"Logged in as: {username}")
-    
-    def show(self):
-        """Show the dashboard view."""
-        self.frame.grid()
-    
-    def hide(self):
-        """Hide the dashboard view."""
-        self.frame.grid_remove()
-
+        self.welcome_label.setText(f"Welcome, {username}!")
+        self.user_info_label.setText(f"Logged in as: {username}")

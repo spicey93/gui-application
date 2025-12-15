@@ -1,123 +1,123 @@
 """Login view GUI."""
-import tkinter as tk
-from tkinter import ttk, messagebox
-from typing import Callable, Optional
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QLineEdit, QPushButton, QMessageBox
+)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QKeyEvent
 
 
-class LoginView:
+class LoginView(QWidget):
     """Login window GUI."""
     
-    def __init__(self, root: tk.Tk):
+    # Signal emitted when login is attempted
+    login_attempted = Signal(str, str)
+    
+    def __init__(self):
         """Initialize the login view."""
-        self.root = root
-        
-        # Login callback
-        self.login_callback: Optional[Callable[[str, str], None]] = None
-        
-        # Create container frame
-        self.frame = ttk.Frame(self.root)
-        self.frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Create UI
+        super().__init__()
         self._create_widgets()
+        self._setup_keyboard_navigation()
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
-        # Main frame
-        main_frame = ttk.Frame(self.frame, padding="20")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
         
         # Username
-        ttk.Label(main_frame, text="Username:").grid(
-            row=0, column=0, sticky=tk.W, pady=5
-        )
-        self.username_entry = ttk.Entry(main_frame, width=25)
-        self.username_entry.grid(row=0, column=1, pady=5, padx=(10, 0))
-        self.username_entry.focus()
+        username_label = QLabel("Username:")
+        layout.addWidget(username_label)
+        
+        self.username_entry = QLineEdit()
+        self.username_entry.setPlaceholderText("Enter username")
+        self.username_entry.setMinimumHeight(25)
+        layout.addWidget(self.username_entry)
         
         # Password
-        ttk.Label(main_frame, text="Password:").grid(
-            row=1, column=0, sticky=tk.W, pady=5
-        )
-        self.password_entry = ttk.Entry(main_frame, width=25, show="*")
-        self.password_entry.grid(row=1, column=1, pady=5, padx=(10, 0))
+        password_label = QLabel("Password:")
+        layout.addWidget(password_label)
         
-        # Bind Enter key to login
-        self.password_entry.bind("<Return>", lambda e: self._handle_login())
-        
-        # Login button
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=20)
-        
-        self.login_button = ttk.Button(
-            button_frame,
-            text="Login",
-            command=self._handle_login,
-            width=15
-        )
-        self.login_button.pack()
+        self.password_entry = QLineEdit()
+        self.password_entry.setPlaceholderText("Enter password")
+        self.password_entry.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_entry.setMinimumHeight(25)
+        layout.addWidget(self.password_entry)
         
         # Status label
-        self.status_label = ttk.Label(
-            main_frame,
-            text="",
-            foreground="red"
-        )
-        self.status_label.grid(row=3, column=0, columnspan=2, pady=5)
+        self.status_label = QLabel("")
+        self.status_label.setStyleSheet("color: red; font-size: 10px;")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setMinimumHeight(20)
+        layout.addWidget(self.status_label)
+        
+        # Login button
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        self.login_button = QPushButton("Login")
+        self.login_button.setMinimumWidth(120)
+        self.login_button.setMinimumHeight(30)
+        self.login_button.setDefault(True)  # Makes it respond to Enter key
+        self.login_button.clicked.connect(self._handle_login)
+        button_layout.addWidget(self.login_button)
+        button_layout.addStretch()
+        
+        layout.addLayout(button_layout)
+        layout.addStretch()
+        
+        # Set focus to username entry
+        self.username_entry.setFocus()
+    
+    def _setup_keyboard_navigation(self):
+        """Set up keyboard navigation."""
+        # Tab order is automatically handled by Qt based on widget creation order
+        # Enter key on password field triggers login
+        self.password_entry.returnPressed.connect(self._handle_login)
     
     def _handle_login(self):
-        """Handle login button click."""
-        username = self.username_entry.get().strip()
-        password = self.password_entry.get()
+        """Handle login button click or Enter key."""
+        username = self.username_entry.text().strip()
+        password = self.password_entry.text()
         
         if not username or not password:
             self.show_error("Please enter both username and password")
             return
         
-        if self.login_callback:
-            self.login_callback(username, password)
-    
-    def set_login_callback(self, callback: Callable[[str, str], None]):
-        """Set the callback function for login attempts."""
-        self.login_callback = callback
+        self.login_attempted.emit(username, password)
     
     def show_error(self, message: str):
         """Display an error message."""
-        self.status_label.config(text=message, foreground="red")
-        self.root.after(3000, lambda: self.status_label.config(text=""))
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet("color: red;")
+        # Clear after 3 seconds
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(3000, lambda: self.status_label.setText(""))
     
     def show_success(self, message: str):
         """Display a success message."""
-        self.status_label.config(text=message, foreground="green")
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet("color: green;")
     
     def clear_fields(self):
         """Clear the input fields."""
-        self.username_entry.delete(0, tk.END)
-        self.password_entry.delete(0, tk.END)
-        self.username_entry.focus()
+        self.username_entry.clear()
+        self.password_entry.clear()
+        self.username_entry.setFocus()
+        self.status_label.clear()
     
     def disable_login(self):
         """Disable the login button."""
-        self.login_button.config(state="disabled")
+        self.login_button.setEnabled(False)
     
     def enable_login(self):
         """Enable the login button."""
-        self.login_button.config(state="normal")
+        self.login_button.setEnabled(True)
     
     def show_success_dialog(self, message: str):
         """Show a success dialog."""
-        messagebox.showinfo("Success", message)
+        QMessageBox.information(self, "Success", message)
     
     def show_error_dialog(self, message: str):
         """Show an error dialog."""
-        messagebox.showerror("Error", message)
-    
-    def show(self):
-        """Show the login view."""
-        self.frame.grid()
-        self.clear_fields()
-    
-    def hide(self):
-        """Hide the login view."""
-        self.frame.grid_remove()
-
+        QMessageBox.critical(self, "Error", message)

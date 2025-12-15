@@ -1,31 +1,36 @@
 """Suppliers controller."""
-from typing import TYPE_CHECKING, Optional, Callable
+from typing import TYPE_CHECKING
+from PySide6.QtCore import QObject, Signal
 
 if TYPE_CHECKING:
     from views.suppliers_view import SuppliersView
     from models.supplier import Supplier
 
 
-class SuppliersController:
+class SuppliersController(QObject):
     """Controller for suppliers functionality."""
+    
+    # Signals
+    dashboard_requested = Signal()
+    logout_requested = Signal()
     
     def __init__(self, suppliers_view: "SuppliersView", supplier_model: "Supplier", user_id: int):
         """Initialize the suppliers controller."""
+        super().__init__()
         self.suppliers_view = suppliers_view
         self.supplier_model = supplier_model
         self.user_id = user_id
         
-        # Set up view callbacks
-        self.suppliers_view.set_dashboard_callback(self.handle_dashboard)
-        self.suppliers_view.set_logout_callback(self.handle_logout)
-        self.suppliers_view.set_create_callback(self.handle_create)
-        self.suppliers_view.set_update_callback(self.handle_update)
-        self.suppliers_view.set_delete_callback(self.handle_delete)
-        self.suppliers_view.set_refresh_callback(self.refresh_suppliers)
+        # Connect view signals to controller handlers
+        self.suppliers_view.dashboard_requested.connect(self.handle_dashboard)
+        self.suppliers_view.logout_requested.connect(self.handle_logout)
+        self.suppliers_view.create_requested.connect(self.handle_create)
+        self.suppliers_view.update_requested.connect(self.handle_update)
+        self.suppliers_view.delete_requested.connect(self.handle_delete)
+        self.suppliers_view.refresh_requested.connect(self.refresh_suppliers)
         
-        # Navigation callbacks
-        self.on_dashboard: Optional[Callable[[], None]] = None
-        self.on_logout: Optional[Callable[[], None]] = None
+        # Load initial suppliers
+        self.refresh_suppliers()
     
     def set_user_id(self, user_id: int):
         """Update the user ID and refresh suppliers."""
@@ -69,19 +74,8 @@ class SuppliersController:
     
     def handle_dashboard(self):
         """Handle dashboard navigation."""
-        if self.on_dashboard:
-            self.on_dashboard()
+        self.dashboard_requested.emit()
     
     def handle_logout(self):
         """Handle logout."""
-        if self.on_logout:
-            self.on_logout()
-    
-    def set_dashboard_callback(self, callback: Callable[[], None]):
-        """Set callback for dashboard navigation."""
-        self.on_dashboard = callback
-    
-    def set_logout_callback(self, callback: Callable[[], None]):
-        """Set callback for logout."""
-        self.on_logout = callback
-
+        self.logout_requested.emit()
