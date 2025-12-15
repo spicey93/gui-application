@@ -40,6 +40,7 @@ class ShortcutsDialog(QDialog):
         
         <b>Ctrl+D</b> - Navigate to Dashboard<br>
         <b>Ctrl+S</b> - Navigate to Suppliers<br>
+        <b>Ctrl+P</b> - Navigate to Products<br>
         <b>Ctrl+L</b> - Logout<br>
         <b>F1</b> - Show this help dialog<br><br>
         
@@ -58,9 +59,16 @@ class ShortcutsDialog(QDialog):
         <b>Enter</b> (on selected row) - Open supplier details<br>
         <b>Double-click</b> (on row) - Open supplier details<br><br>
         
+        <b>Products View:</b><br><br>
+        
+        <b>Ctrl+N</b> - Add new product<br>
+        <b>F5</b> - Refresh products list<br>
+        <b>Enter</b> (on selected row) - Open product details<br>
+        <b>Double-click</b> (on row) - Open product details<br><br>
+        
         <b>Forms:</b><br><br>
         
-        <b>Ctrl+Enter</b> - Submit form (login, create supplier, etc.)<br>
+        <b>Ctrl+Enter</b> - Submit form (login, create supplier/product, etc.)<br>
         <b>Enter</b> - Submit form (when button is focused)<br>
         <b>Escape</b> - Cancel form
         """

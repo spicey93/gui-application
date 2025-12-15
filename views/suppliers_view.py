@@ -7,7 +7,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
-from views.shortcuts_dialog import ShortcutsDialog
+from views.navigation_panel import NavigationPanel
+from views.navigation_panel import NavigationPanel
 
 
 class SuppliersTableWidget(QTableWidget):
@@ -33,6 +34,7 @@ class SuppliersView(QWidget):
     
     # Signals
     dashboard_requested = Signal()
+    configuration_requested = Signal()
     logout_requested = Signal()
     create_requested = Signal(str, str)
     update_requested = Signal(int, str, str)
@@ -51,72 +53,16 @@ class SuppliersView(QWidget):
         main_layout.setSpacing(0)
         main_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Navigation panel (left sidebar) - same as dashboard
-        nav_panel = QFrame()
-        nav_panel.setObjectName("navPanel")
-        nav_panel.setFixedWidth(180)
-        nav_panel.setFrameShape(QFrame.Shape.StyledPanel)
-        nav_panel.setFrameShadow(QFrame.Shadow.Raised)
-        
-        nav_layout = QVBoxLayout(nav_panel)
-        nav_layout.setSpacing(10)
-        nav_layout.setContentsMargins(15, 15, 15, 15)
-        
-        # Navigation title
-        nav_title = QLabel("Navigation")
-        nav_title.setStyleSheet("font-weight: bold; font-size: 12px;")
-        nav_layout.addWidget(nav_title)
-        
-        nav_layout.addSpacing(10)
-        
-        # Dashboard menu item
-        self.dashboard_button = QPushButton("Dashboard")
-        self.dashboard_button.setMinimumHeight(30)
-        self.dashboard_button.clicked.connect(self._handle_dashboard)
-        nav_layout.addWidget(self.dashboard_button)
-        
-        # Suppliers menu item
-        self.suppliers_button = QPushButton("Suppliers")
-        self.suppliers_button.setMinimumHeight(30)
-        self.suppliers_button.clicked.connect(self._handle_suppliers)
-        nav_layout.addWidget(self.suppliers_button)
-        
-        nav_layout.addSpacing(15)
-        
-        # Separator
-        separator = QFrame()
-        separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setFrameShadow(QFrame.Shadow.Sunken)
-        nav_layout.addWidget(separator)
-        
-        nav_layout.addSpacing(15)
-        
-        # Logout menu item
-        self.logout_button = QPushButton("Logout")
-        self.logout_button.setMinimumHeight(30)
-        self.logout_button.clicked.connect(self._handle_logout)
-        nav_layout.addWidget(self.logout_button)
-        
-        nav_layout.addSpacing(15)
-        
-        # Separator
-        separator2 = QFrame()
-        separator2.setFrameShape(QFrame.Shape.HLine)
-        separator2.setFrameShadow(QFrame.Shadow.Sunken)
-        nav_layout.addWidget(separator2)
-        
-        nav_layout.addSpacing(15)
-        
-        # Help/Shortcuts button
-        self.help_button = QPushButton("Keyboard Shortcuts")
-        self.help_button.setMinimumHeight(30)
-        self.help_button.clicked.connect(self._handle_help)
-        nav_layout.addWidget(self.help_button)
-        
-        nav_layout.addStretch()
+        # Navigation panel (left sidebar)
+        self.nav_panel = NavigationPanel(current_view="suppliers")
+        self.nav_panel.dashboard_requested.connect(self._handle_dashboard)
+        self.nav_panel.suppliers_requested.connect(self._handle_suppliers)
+        self.nav_panel.products_requested.connect(self._handle_products)
+        self.nav_panel.configuration_requested.connect(self._handle_configuration)
+        self.nav_panel.logout_requested.connect(self._handle_logout)
         
         # Add navigation panel to main layout
-        main_layout.addWidget(nav_panel)
+        main_layout.addWidget(self.nav_panel)
         
         # Content area (right side)
         content_frame = QWidget()
@@ -134,8 +80,8 @@ class SuppliersView(QWidget):
         
         title_layout.addStretch()
         
-        self.add_supplier_button = QPushButton("Add Supplier")
-        self.add_supplier_button.setMinimumWidth(120)
+        self.add_supplier_button = QPushButton("Add Supplier (Ctrl+N)")
+        self.add_supplier_button.setMinimumWidth(180)
         self.add_supplier_button.setMinimumHeight(30)
         self.add_supplier_button.clicked.connect(self._handle_add_supplier)
         title_layout.addWidget(self.add_supplier_button)
@@ -170,11 +116,8 @@ class SuppliersView(QWidget):
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
-        # Tab order: Dashboard -> Suppliers -> Logout -> Help -> Add Supplier -> Table
-        self.setTabOrder(self.dashboard_button, self.suppliers_button)
-        self.setTabOrder(self.suppliers_button, self.logout_button)
-        self.setTabOrder(self.logout_button, self.help_button)
-        self.setTabOrder(self.help_button, self.add_supplier_button)
+        # Tab order: Navigation panel -> Add Supplier -> Table
+        self.setTabOrder(self.nav_panel.logout_button, self.add_supplier_button)
         self.setTabOrder(self.add_supplier_button, self.suppliers_table)
         
         # Arrow keys work automatically in QTableWidget
@@ -190,14 +133,18 @@ class SuppliersView(QWidget):
         # Already on suppliers page
         pass
     
+    def _handle_products(self):
+        """Handle products button click."""
+        # Navigation handled by main app
+        pass
+    
+    def _handle_configuration(self):
+        """Handle configuration button click."""
+        self.configuration_requested.emit()
+    
     def _handle_logout(self):
         """Handle logout button click."""
         self.logout_requested.emit()
-    
-    def _handle_help(self):
-        """Handle help button click."""
-        dialog = ShortcutsDialog(self)
-        dialog.exec()
     
     def _handle_add_supplier(self):
         """Handle Add Supplier button click."""
@@ -226,6 +173,11 @@ class SuppliersView(QWidget):
         dialog.setModal(True)
         dialog.setMinimumSize(600, 500)
         dialog.resize(600, 500)
+        
+        # Add Escape key shortcut for cancel
+        from PySide6.QtGui import QShortcut, QKeySequence
+        esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
+        esc_shortcut.activated.connect(dialog.reject)
         
         layout = QVBoxLayout(dialog)
         layout.setSpacing(20)
@@ -314,8 +266,8 @@ class SuppliersView(QWidget):
             self.update_requested.emit(supplier_id, new_account_number, new_name)
             dialog.accept()
         
-        save_btn = QPushButton("Save Changes")
-        save_btn.setMinimumWidth(120)
+        save_btn = QPushButton("Save Changes (Ctrl+Enter)")
+        save_btn.setMinimumWidth(200)
         save_btn.setMinimumHeight(30)
         save_btn.setDefault(True)
         save_btn.clicked.connect(handle_save)
@@ -325,8 +277,8 @@ class SuppliersView(QWidget):
         ctrl_enter_shortcut.activated.connect(handle_save)
         button_layout.addWidget(save_btn)
         
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setMinimumWidth(120)
+        cancel_btn = QPushButton("Cancel (Esc)")
+        cancel_btn.setMinimumWidth(140)
         cancel_btn.setMinimumHeight(30)
         cancel_btn.clicked.connect(dialog.reject)
         button_layout.addWidget(cancel_btn)
@@ -360,6 +312,10 @@ class SuppliersView(QWidget):
         dialog.setModal(True)
         dialog.setMinimumSize(500, 300)
         dialog.resize(500, 300)
+        
+        # Add Escape key shortcut for cancel
+        esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
+        esc_shortcut.activated.connect(dialog.reject)
         
         layout = QVBoxLayout(dialog)
         layout.setSpacing(20)
@@ -414,8 +370,8 @@ class SuppliersView(QWidget):
             self.create_requested.emit(acc_num, supplier_name)
             dialog.accept()
         
-        save_btn = QPushButton("Save")
-        save_btn.setMinimumWidth(100)
+        save_btn = QPushButton("Save (Ctrl+Enter)")
+        save_btn.setMinimumWidth(160)
         save_btn.setMinimumHeight(30)
         save_btn.setDefault(True)
         save_btn.clicked.connect(handle_save)
@@ -425,8 +381,8 @@ class SuppliersView(QWidget):
         ctrl_enter_shortcut.activated.connect(handle_save)
         button_layout.addWidget(save_btn)
         
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setMinimumWidth(100)
+        cancel_btn = QPushButton("Cancel (Esc)")
+        cancel_btn.setMinimumWidth(140)
         cancel_btn.setMinimumHeight(30)
         cancel_btn.clicked.connect(dialog.reject)
         button_layout.addWidget(cancel_btn)

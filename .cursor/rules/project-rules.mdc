@@ -23,3 +23,6 @@ alwaysApply: true
 - Add docstrings to all public methods and classes
 - Keep functions small and focused on a single responsibility
 - Use logging instead of print statements for debugging and error tracking
+- Whenever we get bugs or errors, we should put tests in place to ensure they don't occur again. We should also consider if any other similar bugs could exist and write tests for those and then run them to see if the application is working properly.
+- I don't want any files longer than 300 lines of code. At that point, refactor and modularise the code.
+- If there is duplicate code on different files, consider using classes or some other method to reduce repetition of code.

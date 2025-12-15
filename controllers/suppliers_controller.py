@@ -12,6 +12,7 @@ class SuppliersController(QObject):
     
     # Signals
     dashboard_requested = Signal()
+    configuration_requested = Signal()
     logout_requested = Signal()
     
     def __init__(self, suppliers_view: "SuppliersView", supplier_model: "Supplier", user_id: int):
@@ -23,6 +24,7 @@ class SuppliersController(QObject):
         
         # Connect view signals to controller handlers
         self.suppliers_view.dashboard_requested.connect(self.handle_dashboard)
+        self.suppliers_view.configuration_requested.connect(self.handle_configuration)
         self.suppliers_view.logout_requested.connect(self.handle_logout)
         self.suppliers_view.create_requested.connect(self.handle_create)
         self.suppliers_view.update_requested.connect(self.handle_update)
@@ -75,6 +77,10 @@ class SuppliersController(QObject):
     def handle_dashboard(self):
         """Handle dashboard navigation."""
         self.dashboard_requested.emit()
+    
+    def handle_configuration(self):
+        """Handle configuration navigation."""
+        self.configuration_requested.emit()
     
     def handle_logout(self):
         """Handle logout."""

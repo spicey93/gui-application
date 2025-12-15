@@ -55,8 +55,8 @@ class LoginView(QWidget):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        self.login_button = QPushButton("Login")
-        self.login_button.setMinimumWidth(120)
+        self.login_button = QPushButton("Login (Enter)")
+        self.login_button.setMinimumWidth(140)
         self.login_button.setMinimumHeight(30)
         self.login_button.setDefault(True)  # Makes it respond to Enter key
         self.login_button.clicked.connect(self._handle_login)

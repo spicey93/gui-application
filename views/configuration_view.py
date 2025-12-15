@@ -1,4 +1,4 @@
-"""Dashboard view GUI."""
+"""Configuration view GUI."""
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame
 )
@@ -6,19 +6,18 @@ from PySide6.QtCore import Qt, Signal
 from views.navigation_panel import NavigationPanel
 
 
-class DashboardView(QWidget):
-    """Dashboard/home page GUI."""
+class ConfigurationView(QWidget):
+    """Configuration view GUI."""
     
     # Signals
-    logout_requested = Signal()
+    dashboard_requested = Signal()
     suppliers_requested = Signal()
     products_requested = Signal()
-    configuration_requested = Signal()
+    logout_requested = Signal()
     
     def __init__(self):
-        """Initialize the dashboard view."""
+        """Initialize the configuration view."""
         super().__init__()
-        self.current_username: str = ""
         self._create_widgets()
         self._setup_keyboard_navigation()
     
@@ -29,7 +28,7 @@ class DashboardView(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         
         # Navigation panel (left sidebar)
-        self.nav_panel = NavigationPanel(current_view="dashboard")
+        self.nav_panel = NavigationPanel(current_view="configuration")
         self.nav_panel.dashboard_requested.connect(self._handle_dashboard)
         self.nav_panel.suppliers_requested.connect(self._handle_suppliers)
         self.nav_panel.products_requested.connect(self._handle_products)
@@ -45,35 +44,14 @@ class DashboardView(QWidget):
         content_layout.setSpacing(20)
         content_layout.setContentsMargins(40, 40, 40, 40)
         
-        # Welcome label
-        self.welcome_label = QLabel("Welcome!")
-        self.welcome_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-        content_layout.addWidget(self.welcome_label)
-        
-        # User info
-        self.user_info_label = QLabel("")
-        self.user_info_label.setStyleSheet("font-size: 10px;")
-        content_layout.addWidget(self.user_info_label)
-        
-        content_layout.addSpacing(20)
-        
-        # Separator
-        content_separator = QFrame()
-        content_separator.setFrameShape(QFrame.Shape.HLine)
-        content_separator.setFrameShadow(QFrame.Shadow.Sunken)
-        content_layout.addWidget(content_separator)
-        
-        content_layout.addSpacing(20)
-        
-        # Dashboard content
-        info_label = QLabel("You have successfully logged in.")
-        info_label.setStyleSheet("font-size: 12px;")
-        content_layout.addWidget(info_label)
-        
-        # Placeholder for future dashboard content
-        placeholder_label = QLabel("Dashboard content goes here...")
-        placeholder_label.setStyleSheet("font-size: 10px; color: gray;")
+        # Blank page for now
+        placeholder_label = QLabel("Configuration")
+        placeholder_label.setStyleSheet("font-size: 24px; font-weight: bold; color: gray;")
         content_layout.addWidget(placeholder_label)
+        
+        info_label = QLabel("Configuration options will be available here in the future.")
+        info_label.setStyleSheet("font-size: 12px; color: gray;")
+        content_layout.addWidget(info_label)
         
         content_layout.addStretch()
         
@@ -87,8 +65,7 @@ class DashboardView(QWidget):
     
     def _handle_dashboard(self):
         """Handle dashboard button click."""
-        # Dashboard is already shown, but this allows for future navigation logic
-        pass
+        self.dashboard_requested.emit()
     
     def _handle_suppliers(self):
         """Handle suppliers button click."""
@@ -100,14 +77,10 @@ class DashboardView(QWidget):
     
     def _handle_configuration(self):
         """Handle configuration button click."""
-        self.configuration_requested.emit()
+        # Already on configuration page
+        pass
     
     def _handle_logout(self):
         """Handle logout button click."""
         self.logout_requested.emit()
-    
-    def set_username(self, username: str):
-        """Set the current username and update display."""
-        self.current_username = username
-        self.welcome_label.setText(f"Welcome, {username}!")
-        self.user_info_label.setText(f"Logged in as: {username}")
+

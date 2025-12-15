@@ -8,13 +8,19 @@ from PySide6.QtGui import QShortcut, QKeySequence
 
 from models.user import User
 from models.supplier import Supplier
+from models.product import Product
+from models.product_type import ProductType
 from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from views.suppliers_view import SuppliersView
+from views.products_view import ProductsView
+from views.configuration_view import ConfigurationView
 from views.shortcuts_dialog import ShortcutsDialog
 from controllers.login_controller import LoginController
 from controllers.dashboard_controller import DashboardController
 from controllers.suppliers_controller import SuppliersController
+from controllers.products_controller import ProductsController
+from controllers.configuration_controller import ConfigurationController
 
 
 class Application(QMainWindow):
@@ -35,6 +41,8 @@ class Application(QMainWindow):
         # Initialize models
         self.user_model = User()
         self.supplier_model = Supplier()
+        self.product_model = Product()
+        self.product_type_model = ProductType()
         
         # Current user ID (None until login)
         self.current_user_id: Optional[int] = None
@@ -47,11 +55,15 @@ class Application(QMainWindow):
         self.login_view = LoginView()
         self.dashboard_view = DashboardView()
         self.suppliers_view = SuppliersView()
+        self.products_view = ProductsView()
+        self.configuration_view = ConfigurationView()
         
         # Add views to stacked widget
         self.login_index = self.stacked_widget.addWidget(self.login_view)
         self.dashboard_index = self.stacked_widget.addWidget(self.dashboard_view)
         self.suppliers_index = self.stacked_widget.addWidget(self.suppliers_view)
+        self.products_index = self.stacked_widget.addWidget(self.products_view)
+        self.configuration_index = self.stacked_widget.addWidget(self.configuration_view)
         
         # Show login view initially
         self.stacked_widget.setCurrentIndex(self.login_index)
@@ -60,11 +72,15 @@ class Application(QMainWindow):
         self.login_controller = LoginController(self.user_model, self.login_view)
         self.dashboard_controller = DashboardController(self.dashboard_view)
         self.suppliers_controller = None
+        self.products_controller = None
+        self.configuration_controller = None
         
         # Set up navigation callbacks
         self.login_controller.login_success.connect(self.on_login_success)
         self.dashboard_controller.logout_requested.connect(self.on_logout)
         self.dashboard_controller.suppliers_requested.connect(self.on_suppliers)
+        self.dashboard_controller.products_requested.connect(self.on_products)
+        self.dashboard_controller.configuration_requested.connect(self.on_configuration)
         
         # Center the window
         self._center_window()
@@ -96,15 +112,23 @@ class Application(QMainWindow):
         self.shortcut_suppliers = QShortcut(QKeySequence("Ctrl+S"), self)
         self.shortcut_suppliers.activated.connect(self._navigate_to_suppliers)
         
+        # Ctrl+P: Products
+        self.shortcut_products = QShortcut(QKeySequence("Ctrl+P"), self)
+        self.shortcut_products.activated.connect(self._navigate_to_products)
+        
+        # Ctrl+O: Configuration
+        self.shortcut_configuration = QShortcut(QKeySequence("Ctrl+O"), self)
+        self.shortcut_configuration.activated.connect(self._navigate_to_configuration)
+        
         # Ctrl+L: Logout
         self.shortcut_logout = QShortcut(QKeySequence("Ctrl+L"), self)
         self.shortcut_logout.activated.connect(self._handle_logout_shortcut)
         
-        # Ctrl+N: Add Supplier (only when in suppliers view)
-        self.shortcut_add_supplier = QShortcut(QKeySequence("Ctrl+N"), self)
-        self.shortcut_add_supplier.activated.connect(self._handle_add_supplier_shortcut)
+        # Ctrl+N: Add Supplier/Product (context-dependent)
+        self.shortcut_add = QShortcut(QKeySequence("Ctrl+N"), self)
+        self.shortcut_add.activated.connect(self._handle_add_shortcut)
         
-        # F5: Refresh (only when in suppliers view)
+        # F5: Refresh (context-dependent)
         self.shortcut_refresh = QShortcut(QKeySequence("F5"), self)
         self.shortcut_refresh.activated.connect(self._handle_refresh_shortcut)
         
@@ -115,6 +139,7 @@ class Application(QMainWindow):
     def _navigate_to_dashboard(self):
         """Navigate to dashboard if logged in."""
         if self.current_user_id is not None:
+            self.dashboard_view.nav_panel.set_current_view("dashboard")
             self.stacked_widget.setCurrentIndex(self.dashboard_index)
             self.setWindowTitle("Dashboard")
             self.setMinimumSize(800, 600)
@@ -125,8 +150,29 @@ class Application(QMainWindow):
         if self.current_user_id is not None:
             if self.suppliers_controller:
                 self.suppliers_controller.refresh_suppliers()
+            self.suppliers_view.nav_panel.set_current_view("suppliers")
             self.stacked_widget.setCurrentIndex(self.suppliers_index)
             self.setWindowTitle("Suppliers")
+            self.setMinimumSize(800, 600)
+            self._center_window()
+    
+    def _navigate_to_products(self):
+        """Navigate to products if logged in."""
+        if self.current_user_id is not None:
+            if self.products_controller:
+                self.products_controller.refresh_products()
+            self.products_view.nav_panel.set_current_view("products")
+            self.stacked_widget.setCurrentIndex(self.products_index)
+            self.setWindowTitle("Products")
+            self.setMinimumSize(800, 600)
+            self._center_window()
+    
+    def _navigate_to_configuration(self):
+        """Navigate to configuration if logged in."""
+        if self.current_user_id is not None:
+            self.configuration_view.nav_panel.set_current_view("configuration")
+            self.stacked_widget.setCurrentIndex(self.configuration_index)
+            self.setWindowTitle("Configuration")
             self.setMinimumSize(800, 600)
             self._center_window()
     
@@ -135,18 +181,25 @@ class Application(QMainWindow):
         if self.current_user_id is not None:
             self.on_logout()
     
-    def _handle_add_supplier_shortcut(self):
-        """Handle add supplier keyboard shortcut."""
-        if (self.current_user_id is not None and 
-            self.stacked_widget.currentIndex() == self.suppliers_index):
-            self.suppliers_view.add_supplier()
+    def _handle_add_shortcut(self):
+        """Handle add item keyboard shortcut (supplier or product)."""
+        if self.current_user_id is not None:
+            current_index = self.stacked_widget.currentIndex()
+            if current_index == self.suppliers_index:
+                self.suppliers_view.add_supplier()
+            elif current_index == self.products_index:
+                self.products_view.add_product()
     
     def _handle_refresh_shortcut(self):
         """Handle refresh keyboard shortcut."""
-        if (self.current_user_id is not None and 
-            self.stacked_widget.currentIndex() == self.suppliers_index):
-            if self.suppliers_controller:
-                self.suppliers_controller.refresh_suppliers()
+        if self.current_user_id is not None:
+            current_index = self.stacked_widget.currentIndex()
+            if current_index == self.suppliers_index:
+                if self.suppliers_controller:
+                    self.suppliers_controller.refresh_suppliers()
+            elif current_index == self.products_index:
+                if self.products_controller:
+                    self.products_controller.refresh_products()
     
     def _show_shortcuts_help(self):
         """Show keyboard shortcuts help dialog."""
@@ -167,9 +220,36 @@ class Application(QMainWindow):
                 user_id
             )
             self.suppliers_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.suppliers_controller.configuration_requested.connect(self.on_configuration)
             self.suppliers_controller.logout_requested.connect(self.on_logout)
         else:
             self.suppliers_controller.set_user_id(user_id)
+        
+        # Initialize or update products controller with user_id
+        if self.products_controller is None:
+            self.products_controller = ProductsController(
+                self.products_view,
+                self.product_model,
+                self.product_type_model,
+                user_id
+            )
+            self.products_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.products_controller.suppliers_requested.connect(self.on_suppliers)
+            self.products_controller.configuration_requested.connect(self.on_configuration)
+            self.products_controller.logout_requested.connect(self.on_logout)
+        else:
+            self.products_controller.set_user_id(user_id)
+        
+        # Initialize configuration controller
+        if self.configuration_controller is None:
+            self.configuration_controller = ConfigurationController(
+                self.configuration_view,
+                self.product_type_model
+            )
+            self.configuration_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.configuration_controller.suppliers_requested.connect(self.on_suppliers)
+            self.configuration_controller.products_requested.connect(self.on_products)
+            self.configuration_controller.logout_requested.connect(self.on_logout)
         
         # Update window for dashboard
         self.setWindowTitle("Dashboard")
@@ -177,6 +257,8 @@ class Application(QMainWindow):
         self.resize(1200, 800)
         self._center_window()
         
+        # Update navigation highlighting
+        self.dashboard_view.nav_panel.set_current_view("dashboard")
         # Switch views
         self.stacked_widget.setCurrentIndex(self.dashboard_index)
         self.dashboard_view.set_username(username)
@@ -186,14 +268,47 @@ class Application(QMainWindow):
         # Refresh suppliers for current user
         if self.suppliers_controller:
             self.suppliers_controller.refresh_suppliers()
+        # Update navigation highlighting
+        self.suppliers_view.nav_panel.set_current_view("suppliers")
         # Switch to suppliers view
         self.stacked_widget.setCurrentIndex(self.suppliers_index)
         self.setWindowTitle("Suppliers")
         self.setMinimumSize(800, 600)
         self._center_window()
     
+    def on_products(self):
+        """Handle navigation to products."""
+        # Refresh products for current user
+        if self.products_controller:
+            self.products_controller.refresh_products()
+        # Update navigation highlighting
+        self.products_view.nav_panel.set_current_view("products")
+        # Switch to products view
+        self.stacked_widget.setCurrentIndex(self.products_index)
+        self.setWindowTitle("Products")
+        self.setMinimumSize(800, 600)
+        self._center_window()
+    
+    def on_configuration(self):
+        """Handle navigation to configuration."""
+        # Update navigation highlighting
+        self.configuration_view.nav_panel.set_current_view("configuration")
+        # Switch to configuration view
+        self.stacked_widget.setCurrentIndex(self.configuration_index)
+        self.setWindowTitle("Configuration")
+        self.setMinimumSize(800, 600)
+        self._center_window()
+    
+    def _refresh_product_types_after_change(self):
+        """Refresh product types in products view after configuration changes."""
+        # This will be called after type creation/deletion completes
+        if self.products_controller:
+            self.products_controller.refresh_types()
+    
     def on_back_to_dashboard(self):
         """Handle navigation back to dashboard."""
+        # Update navigation highlighting
+        self.dashboard_view.nav_panel.set_current_view("dashboard")
         # Switch to dashboard view
         self.stacked_widget.setCurrentIndex(self.dashboard_index)
         self.setWindowTitle("Dashboard")
