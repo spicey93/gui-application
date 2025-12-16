@@ -721,11 +721,17 @@ class SuppliersView(QWidget):
         layout.addWidget(items_table)
         
         # Add Item button
-        add_item_btn = QPushButton("Add Item")
+        add_item_btn = QPushButton("Add Item (Ctrl+I)")
         add_item_btn.clicked.connect(
             lambda: self._add_invoice_item_dialog(dialog, items_table, supplier_id, update_totals)
         )
         layout.addWidget(add_item_btn)
+        
+        # Add Item shortcut
+        add_item_shortcut = QShortcut(QKeySequence("Ctrl+I"), dialog)
+        add_item_shortcut.activated.connect(
+            lambda: self._add_invoice_item_dialog(dialog, items_table, supplier_id, update_totals)
+        )
         
         # Totals
         totals_layout = QVBoxLayout()
@@ -839,8 +845,8 @@ class SuppliersView(QWidget):
         dialog = QDialog(parent_dialog)
         dialog.setWindowTitle("Add Products to Invoice")
         dialog.setModal(True)
-        dialog.setMinimumSize(900, 700)
-        dialog.resize(900, 700)
+        dialog.setMinimumSize(900, 800)
+        dialog.resize(900, 800)
         
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
         esc_shortcut.activated.connect(dialog.reject)
@@ -854,15 +860,11 @@ class SuppliersView(QWidget):
         title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
         main_layout.addWidget(title_label)
         
-        # Split layout: Products on left, Basket on right
-        split_layout = QHBoxLayout()
-        split_layout.setSpacing(20)
-        
-        # Left side: Product search and selection
-        left_frame = QWidget()
-        left_layout = QVBoxLayout(left_frame)
-        left_layout.setSpacing(10)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        # Product search and selection section
+        products_section = QWidget()
+        products_layout = QVBoxLayout(products_section)
+        products_layout.setSpacing(10)
+        products_layout.setContentsMargins(0, 0, 0, 0)
         
         # Search field
         search_layout = QHBoxLayout()
@@ -873,7 +875,7 @@ class SuppliersView(QWidget):
         search_entry.setPlaceholderText("Search by stock number or description...")
         search_entry.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         search_layout.addWidget(search_entry, stretch=1)
-        left_layout.addLayout(search_layout)
+        products_layout.addLayout(search_layout)
         
         # Products table with Enter key support
         class ProductSearchTableWidget(QTableWidget):
@@ -899,7 +901,7 @@ class SuppliersView(QWidget):
         products_table.setAlternatingRowColors(True)
         products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         products_table.setMinimumHeight(300)
-        left_layout.addWidget(products_table)
+        products_layout.addWidget(products_table)
         
         # Store filtered products for Enter key
         filtered_products_list = []
@@ -909,15 +911,12 @@ class SuppliersView(QWidget):
             if 0 <= row < len(filtered_products_list):
                 add_to_basket(filtered_products_list[row])
         
-        # Right side: Basket
-        right_frame = QWidget()
-        right_layout = QVBoxLayout(right_frame)
-        right_layout.setSpacing(10)
-        right_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(products_section)
         
+        # Basket section (below products)
         basket_label = QLabel("Basket")
         basket_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        right_layout.addWidget(basket_label)
+        main_layout.addWidget(basket_label)
         
         # Basket table
         basket_table = QTableWidget()
@@ -928,12 +927,7 @@ class SuppliersView(QWidget):
         basket_table.setAlternatingRowColors(True)
         basket_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         basket_table.setMinimumHeight(300)
-        right_layout.addWidget(basket_table)
-        
-        # Add both frames to split layout
-        split_layout.addWidget(left_frame, stretch=2)
-        split_layout.addWidget(right_frame, stretch=1)
-        main_layout.addLayout(split_layout)
+        main_layout.addWidget(basket_table)
         
         # Basket data storage
         basket_items = []  # List of dicts: {product_id, stock_number, description, quantity, unit_price}

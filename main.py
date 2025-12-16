@@ -228,7 +228,7 @@ class Application(QMainWindow):
         reply = QMessageBox.question(
             self,
             "Exit Application",
-            "Are you sure you want to exit?",
+            "Are you sure you want to exit the application?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )
