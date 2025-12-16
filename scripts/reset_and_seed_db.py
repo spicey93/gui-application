@@ -12,6 +12,10 @@ from models.user import User
 from models.supplier import Supplier
 from models.product import Product
 from models.product_type import ProductType
+from models.invoice import Invoice
+from models.invoice_item import InvoiceItem
+from models.payment import Payment
+from models.payment_allocation import PaymentAllocation
 
 
 def _hash_password(password: str) -> str:
@@ -38,13 +42,19 @@ def reset_database(db_path: str = "data/app.db"):
     supplier_model = Supplier(db_path)
     product_model = Product(db_path)
     product_type_model = ProductType(db_path)
+    invoice_model = Invoice(db_path)
+    invoice_item_model = InvoiceItem(db_path)
+    payment_model = Payment(db_path)
+    payment_allocation_model = PaymentAllocation(db_path)
     
     print("Database reset complete!")
-    return user_model, supplier_model, product_model, product_type_model
+    return user_model, supplier_model, product_model, product_type_model, invoice_model, invoice_item_model, payment_model, payment_allocation_model
 
 
 def seed_database(user_model: User, supplier_model: Supplier, 
-                 product_model: Product, product_type_model: ProductType):
+                 product_model: Product, product_type_model: ProductType,
+                 invoice_model: Invoice, invoice_item_model: InvoiceItem,
+                 payment_model: Payment, payment_allocation_model: PaymentAllocation):
     """Seed the database with test data."""
     print("\nSeeding database with test data...")
     
@@ -132,6 +142,114 @@ def seed_database(user_model: User, supplier_model: Supplier,
             else:
                 print(f"    ✗ Failed to create product {stock_number}: {message}")
     
+    # Create invoices and payments for first user
+    print("\nCreating invoices and payments...")
+    if created_users:
+        username, user_id = created_users[0]
+        print(f"  Creating invoices and payments for user: {username}")
+        
+        # Get suppliers for this user
+        suppliers = supplier_model.get_all(user_id)
+        if suppliers:
+            supplier = suppliers[0]  # Use first supplier
+            supplier_internal_id = supplier.get('internal_id', supplier['id'])
+            
+            # Get products for this user
+            products = product_model.get_all(user_id)
+            
+            # Create invoices
+            invoices_data = [
+                ("INV-2024-001", "2024-01-15", 20.0),
+                ("INV-2024-002", "2024-02-10", 20.0),
+                ("INV-2024-003", "2024-03-05", 20.0),
+            ]
+            
+            created_invoices = []
+            for inv_num, inv_date, vat_rate in invoices_data:
+                success, message, invoice_id = invoice_model.create(
+                    supplier_internal_id, inv_num, inv_date, vat_rate, user_id
+                )
+                if success:
+                    print(f"    ✓ Created invoice: {inv_num}")
+                    created_invoices.append((invoice_id, inv_num))
+                    
+                    # Add items to invoice
+                    if products:
+                        # Add 2-3 items per invoice
+                        items_to_add = min(3, len(products))
+                        for i in range(items_to_add):
+                            product = products[i]
+                            qty = (i + 1) * 2.0
+                            unit_price = (i + 1) * 10.0
+                            
+                            success, message, _ = invoice_item_model.create(
+                                invoice_id,
+                                product.get('internal_id'),
+                                product['stock_number'],
+                                product['description'],
+                                qty,
+                                unit_price
+                            )
+                            if success:
+                                print(f"      ✓ Added item: {product['stock_number']}")
+                    
+                    # Recalculate totals
+                    invoice_model.calculate_totals(invoice_id, user_id)
+                else:
+                    print(f"    ✗ Failed to create invoice {inv_num}: {message}")
+            
+            # Create payments
+            if created_invoices:
+                payments_data = [
+                    ("2024-01-20", 500.0, "CHQ-001", "Payment for invoice INV-2024-001"),
+                    ("2024-02-15", 300.0, "CHQ-002", "Partial payment"),
+                ]
+                
+                created_payments = []
+                for pay_date, amount, ref, notes in payments_data:
+                    success, message, payment_id = payment_model.create(
+                        supplier_internal_id, pay_date, amount, ref, notes, user_id
+                    )
+                    if success:
+                        print(f"    ✓ Created payment: {ref} - £{amount:.2f}")
+                        created_payments.append((payment_id, amount))
+                    else:
+                        print(f"    ✗ Failed to create payment {ref}: {message}")
+                
+                # Allocate payments to invoices
+                if created_payments and created_invoices:
+                    # Allocate first payment to first invoice
+                    payment_id, payment_amount = created_payments[0]
+                    invoice_id, _ = created_invoices[0]
+                    
+                    # Get invoice outstanding balance
+                    outstanding = invoice_model.get_outstanding_balance(invoice_id, user_id)
+                    allocate_amount = min(payment_amount, outstanding)
+                    
+                    if allocate_amount > 0:
+                        success, message, _ = payment_allocation_model.create(
+                            payment_id, invoice_id, allocate_amount
+                        )
+                        if success:
+                            print(f"    ✓ Allocated £{allocate_amount:.2f} from payment to invoice {created_invoices[0][1]}")
+                        else:
+                            print(f"    ✗ Failed to allocate payment: {message}")
+                    
+                    # Allocate second payment to second invoice (if exists)
+                    if len(created_payments) > 1 and len(created_invoices) > 1:
+                        payment_id, payment_amount = created_payments[1]
+                        invoice_id, _ = created_invoices[1]
+                        
+                        outstanding = invoice_model.get_outstanding_balance(invoice_id, user_id)
+                        allocate_amount = min(payment_amount, outstanding)
+                        
+                        if allocate_amount > 0:
+                            success, message, _ = payment_allocation_model.create(
+                                payment_id, invoice_id, allocate_amount
+                            )
+                            if success:
+                                print(f"    ✓ Allocated £{allocate_amount:.2f} from payment to invoice {created_invoices[1][1]}")
+    
     print("\n✓ Database seeding complete!")
     print("\nTest accounts created:")
     for username, _ in created_users:
@@ -156,10 +274,11 @@ def main():
     
     try:
         # Reset database
-        user_model, supplier_model, product_model, product_type_model = reset_database(db_path)
+        user_model, supplier_model, product_model, product_type_model, invoice_model, invoice_item_model, payment_model, payment_allocation_model = reset_database(db_path)
         
         # Seed database
-        seed_database(user_model, supplier_model, product_model, product_type_model)
+        seed_database(user_model, supplier_model, product_model, product_type_model,
+                     invoice_model, invoice_item_model, payment_model, payment_allocation_model)
         
         print("\n" + "=" * 60)
         print("✓ Database reset and seeding completed successfully!")

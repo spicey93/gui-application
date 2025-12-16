@@ -368,4 +368,128 @@ class Supplier:
             return deleted_count
         except Exception:
             return 0
+    
+    def get_outstanding_balance(self, supplier_id: int, user_id: int) -> float:
+        """
+        Calculate outstanding balance for a supplier (sum of all unpaid invoices).
+        
+        Args:
+            supplier_id: User supplier ID (user_supplier_id)
+            user_id: ID of the user
+        
+        Returns:
+            Outstanding balance amount
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Get internal supplier ID
+                cursor.execute("""
+                    SELECT id FROM suppliers WHERE user_supplier_id = ? AND user_id = ?
+                """, (supplier_id, user_id))
+                result = cursor.fetchone()
+                if not result:
+                    return 0.0
+                
+                internal_supplier_id = result[0]
+                
+                # Get all invoices for this supplier
+                cursor.execute("""
+                    SELECT id, total FROM invoices 
+                    WHERE supplier_id = ? AND user_id = ?
+                """, (internal_supplier_id, user_id))
+                invoices = cursor.fetchall()
+                
+                if not invoices:
+                    return 0.0
+                
+                # Calculate outstanding balance for each invoice
+                total_outstanding = 0.0
+                for invoice_id, invoice_total in invoices:
+                    # Get allocated payments
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount_allocated), 0.0)
+                        FROM payment_allocations
+                        WHERE invoice_id = ?
+                    """, (invoice_id,))
+                    allocated = cursor.fetchone()[0]
+                    outstanding = max(0.0, invoice_total - allocated)
+                    total_outstanding += outstanding
+                
+                return total_outstanding
+        except Exception:
+            return 0.0
+    
+    def get_total_invoiced(self, supplier_id: int, user_id: int) -> float:
+        """
+        Get total amount invoiced to a supplier.
+        
+        Args:
+            supplier_id: User supplier ID (user_supplier_id)
+            user_id: ID of the user
+        
+        Returns:
+            Total invoiced amount
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Get internal supplier ID
+                cursor.execute("""
+                    SELECT id FROM suppliers WHERE user_supplier_id = ? AND user_id = ?
+                """, (supplier_id, user_id))
+                result = cursor.fetchone()
+                if not result:
+                    return 0.0
+                
+                internal_supplier_id = result[0]
+                
+                # Sum all invoice totals
+                cursor.execute("""
+                    SELECT COALESCE(SUM(total), 0.0)
+                    FROM invoices
+                    WHERE supplier_id = ? AND user_id = ?
+                """, (internal_supplier_id, user_id))
+                result = cursor.fetchone()
+                return result[0] if result else 0.0
+        except Exception:
+            return 0.0
+    
+    def get_total_paid(self, supplier_id: int, user_id: int) -> float:
+        """
+        Get total amount paid to a supplier.
+        
+        Args:
+            supplier_id: User supplier ID (user_supplier_id)
+            user_id: ID of the user
+        
+        Returns:
+            Total paid amount
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Get internal supplier ID
+                cursor.execute("""
+                    SELECT id FROM suppliers WHERE user_supplier_id = ? AND user_id = ?
+                """, (supplier_id, user_id))
+                result = cursor.fetchone()
+                if not result:
+                    return 0.0
+                
+                internal_supplier_id = result[0]
+                
+                # Sum all payment amounts
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0.0)
+                    FROM payments
+                    WHERE supplier_id = ? AND user_id = ?
+                """, (internal_supplier_id, user_id))
+                result = cursor.fetchone()
+                return result[0] if result else 0.0
+        except Exception:
+            return 0.0
 

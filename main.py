@@ -10,6 +10,10 @@ from models.user import User
 from models.supplier import Supplier
 from models.product import Product
 from models.product_type import ProductType
+from models.invoice import Invoice
+from models.invoice_item import InvoiceItem
+from models.payment import Payment
+from models.payment_allocation import PaymentAllocation
 from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from views.suppliers_view import SuppliersView
@@ -21,6 +25,8 @@ from controllers.dashboard_controller import DashboardController
 from controllers.suppliers_controller import SuppliersController
 from controllers.products_controller import ProductsController
 from controllers.configuration_controller import ConfigurationController
+from controllers.invoice_controller import InvoiceController
+from controllers.payment_controller import PaymentController
 
 
 class Application(QMainWindow):
@@ -43,6 +49,10 @@ class Application(QMainWindow):
         self.supplier_model = Supplier()
         self.product_model = Product()
         self.product_type_model = ProductType()
+        self.invoice_model = Invoice()
+        self.invoice_item_model = InvoiceItem()
+        self.payment_model = Payment()
+        self.payment_allocation_model = PaymentAllocation()
         
         # Current user ID (None until login)
         self.current_user_id: Optional[int] = None
@@ -74,6 +84,8 @@ class Application(QMainWindow):
         self.suppliers_controller = None
         self.products_controller = None
         self.configuration_controller = None
+        self.invoice_controller = None
+        self.payment_controller = None
         
         # Set up navigation callbacks
         self.login_controller.login_success.connect(self.on_login_success)
@@ -212,12 +224,34 @@ class Application(QMainWindow):
         # Store current user ID
         self.current_user_id = user_id
         
+        # Initialize invoice and payment controllers
+        if self.invoice_controller is None:
+            self.invoice_controller = InvoiceController(
+                self.invoice_model,
+                self.invoice_item_model,
+                user_id
+            )
+        else:
+            self.invoice_controller.set_user_id(user_id)
+        
+        if self.payment_controller is None:
+            self.payment_controller = PaymentController(
+                self.payment_model,
+                self.payment_allocation_model,
+                self.invoice_model,
+                user_id
+            )
+        else:
+            self.payment_controller.set_user_id(user_id)
+        
         # Initialize or update suppliers controller with user_id
         if self.suppliers_controller is None:
             self.suppliers_controller = SuppliersController(
                 self.suppliers_view, 
                 self.supplier_model, 
-                user_id
+                user_id,
+                self.invoice_controller,
+                self.payment_controller
             )
             self.suppliers_controller.dashboard_requested.connect(self.on_back_to_dashboard)
             self.suppliers_controller.configuration_requested.connect(self.on_configuration)

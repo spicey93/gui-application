@@ -1,10 +1,12 @@
 """Suppliers controller."""
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from PySide6.QtCore import QObject, Signal
 
 if TYPE_CHECKING:
     from views.suppliers_view import SuppliersView
     from models.supplier import Supplier
+    from controllers.invoice_controller import InvoiceController
+    from controllers.payment_controller import PaymentController
 
 
 class SuppliersController(QObject):
@@ -14,13 +16,18 @@ class SuppliersController(QObject):
     dashboard_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
+    balance_changed = Signal()  # Emitted when invoices/payments change
     
-    def __init__(self, suppliers_view: "SuppliersView", supplier_model: "Supplier", user_id: int):
+    def __init__(self, suppliers_view: "SuppliersView", supplier_model: "Supplier", user_id: int,
+                 invoice_controller: Optional["InvoiceController"] = None,
+                 payment_controller: Optional["PaymentController"] = None):
         """Initialize the suppliers controller."""
         super().__init__()
         self.suppliers_view = suppliers_view
         self.supplier_model = supplier_model
         self.user_id = user_id
+        self.invoice_controller = invoice_controller
+        self.payment_controller = payment_controller
         
         # Connect view signals to controller handlers
         self.suppliers_view.dashboard_requested.connect(self.handle_dashboard)
@@ -31,13 +38,53 @@ class SuppliersController(QObject):
         self.suppliers_view.delete_requested.connect(self.handle_delete)
         self.suppliers_view.refresh_requested.connect(self.refresh_suppliers)
         
+        # Connect invoice/payment signals to refresh balances
+        if self.invoice_controller:
+            self.invoice_controller.invoice_created.connect(self._on_invoice_change)
+            self.invoice_controller.invoice_updated.connect(self._on_invoice_change)
+            self.invoice_controller.invoice_deleted.connect(self._on_invoice_change)
+            self.invoice_controller.item_added.connect(self._on_invoice_change)
+            self.invoice_controller.item_updated.connect(self._on_invoice_change)
+            self.invoice_controller.item_deleted.connect(self._on_invoice_change)
+        
+        if self.payment_controller:
+            self.payment_controller.payment_created.connect(self._on_payment_change)
+            self.payment_controller.payment_deleted.connect(self._on_payment_change)
+            self.payment_controller.allocation_created.connect(self._on_payment_change)
+            self.payment_controller.allocation_updated.connect(self._on_payment_change)
+            self.payment_controller.allocation_deleted.connect(self._on_payment_change)
+        
+        # Set controllers in view
+        if self.invoice_controller and self.payment_controller:
+            self.suppliers_view.set_controllers(
+                self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id
+            )
+        
         # Load initial suppliers
         self.refresh_suppliers()
     
     def set_user_id(self, user_id: int):
         """Update the user ID and refresh suppliers."""
         self.user_id = user_id
+        if self.invoice_controller:
+            self.invoice_controller.set_user_id(user_id)
+        if self.payment_controller:
+            self.payment_controller.set_user_id(user_id)
+        if self.invoice_controller and self.payment_controller:
+            self.suppliers_view.set_controllers(
+                self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id
+            )
         self.refresh_suppliers()
+    
+    def _on_invoice_change(self):
+        """Handle invoice changes - refresh suppliers to update balances."""
+        self.refresh_suppliers()
+        self.balance_changed.emit()
+    
+    def _on_payment_change(self):
+        """Handle payment changes - refresh suppliers to update balances."""
+        self.refresh_suppliers()
+        self.balance_changed.emit()
     
     def handle_create(self, account_number: str, name: str):
         """Handle create supplier."""
