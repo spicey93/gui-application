@@ -1,11 +1,11 @@
 """Book Keeper view GUI."""
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QDialog, QLineEdit, QComboBox, QMessageBox, QHeaderView,
-    QDateEdit, QDoubleSpinBox, QCheckBox
+    QDateEdit, QDoubleSpinBox, QCheckBox, QLabel, QPushButton
 )
 from PySide6.QtCore import Qt, Signal, QEvent, QDate
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
 from utils.styles import apply_theme
@@ -52,16 +52,18 @@ class BookkeeperView(BaseTabbedView):
     def _create_widgets(self):
         """Create and layout UI widgets."""
         # Add action buttons using base class method
+        # Note: Ctrl+N shortcut is handled by main window, not here to avoid conflicts
         self.add_account_button = self.add_action_button(
             "Add Account (Ctrl+N)", 
             self._handle_add_account,
-            "Ctrl+N"
+            None  # No shortcut here - handled by main window
         )
         
+        # Note: Ctrl+T shortcut is handled by main window, not here to avoid conflicts
         self.transfer_button = self.add_action_button(
             "Transfer Funds (Ctrl+T)",
             self._handle_transfer_funds,
-            "Ctrl+T"
+            None  # No shortcut here - handled by main window
         )
         
         # Create tabs widget

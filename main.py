@@ -165,10 +165,15 @@ class Application(QMainWindow):
         self.shortcut_logout.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_logout.activated.connect(self._handle_logout_shortcut)
         
-        # Ctrl+N: Add Supplier/Product (context-dependent)
+        # Ctrl+N: Add Supplier/Product/Account (context-dependent)
         self.shortcut_add = QShortcut(QKeySequence("Ctrl+N"), self)
         self.shortcut_add.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_add.activated.connect(self._handle_add_shortcut)
+        
+        # Ctrl+T: Transfer Funds (Book Keeper only)
+        self.shortcut_transfer = QShortcut(QKeySequence("Ctrl+T"), self)
+        self.shortcut_transfer.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.shortcut_transfer.activated.connect(self._handle_transfer_shortcut)
         
         # F8: Refresh (context-dependent)
         self.shortcut_refresh = QShortcut(QKeySequence("F8"), self)
@@ -262,6 +267,13 @@ class Application(QMainWindow):
                 self.products_view.add_product()
             elif current_index == self.bookkeeper_index:
                 self.bookkeeper_view.add_account()
+    
+    def _handle_transfer_shortcut(self):
+        """Handle transfer funds keyboard shortcut (Book Keeper only)."""
+        if self.current_user_id is not None:
+            current_index = self.stacked_widget.currentIndex()
+            if current_index == self.bookkeeper_index:
+                self.bookkeeper_view.transfer_funds()
     
     def _handle_refresh_shortcut(self):
         """Handle refresh keyboard shortcut."""
