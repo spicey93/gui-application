@@ -43,15 +43,25 @@ class InvoiceItem:
                         quantity REAL NOT NULL,
                         unit_price REAL NOT NULL,
                         line_total REAL NOT NULL,
+                        vat_code TEXT NOT NULL DEFAULT 'S',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
                     )
                 """)
+            else:
+                # Check if vat_code column exists, add it if not
+                cursor.execute("PRAGMA table_info(invoice_items)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if 'vat_code' not in columns:
+                    cursor.execute("""
+                        ALTER TABLE invoice_items 
+                        ADD COLUMN vat_code TEXT NOT NULL DEFAULT 'S'
+                    """)
             
             conn.commit()
     
     def create(self, invoice_id: int, product_id: Optional[int], stock_number: str,
-               description: str, quantity: float, unit_price: float) -> Tuple[bool, str, Optional[int]]:
+               description: str, quantity: float, unit_price: float, vat_code: str = 'S') -> Tuple[bool, str, Optional[int]]:
         """
         Add an item to an invoice.
         
@@ -83,10 +93,14 @@ class InvoiceItem:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
                 cursor = conn.cursor()
                 
+                vat_code = vat_code.strip().upper() if vat_code else 'S'
+                if vat_code not in ['S', 'E', 'Z']:
+                    vat_code = 'S'  # Default to Standard if invalid
+                
                 cursor.execute("""
-                    INSERT INTO invoice_items (invoice_id, product_id, stock_number, description, quantity, unit_price, line_total)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (invoice_id, product_id, stock_number, description, quantity, unit_price, line_total))
+                    INSERT INTO invoice_items (invoice_id, product_id, stock_number, description, quantity, unit_price, line_total, vat_code)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (invoice_id, product_id, stock_number, description, quantity, unit_price, line_total, vat_code))
                 
                 item_id = cursor.lastrowid
                 conn.commit()
@@ -129,7 +143,7 @@ class InvoiceItem:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT id, product_id, stock_number, description, quantity, unit_price, line_total, created_at
+                    SELECT id, product_id, stock_number, description, quantity, unit_price, line_total, vat_code, created_at
                     FROM invoice_items 
                     WHERE invoice_id = ?
                     ORDER BY id

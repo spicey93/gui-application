@@ -151,7 +151,7 @@ class InvoiceController(QObject):
         return self.invoice_model.get_outstanding_balance(invoice_id, self.user_id)
     
     def add_invoice_item(self, invoice_id: int, product_id: Optional[int], stock_number: str,
-                        description: str, quantity: float, unit_price: float) -> tuple[bool, str, Optional[int]]:
+                        description: str, quantity: float, unit_price: float, vat_code: str = 'S') -> tuple[bool, str, Optional[int]]:
         """
         Add an item to an invoice.
         
@@ -162,12 +162,13 @@ class InvoiceController(QObject):
             description: Item description
             quantity: Quantity
             unit_price: Unit price
+            vat_code: VAT code (S, E, or Z)
         
         Returns:
             Tuple of (success: bool, message: str, item_id: Optional[int])
         """
         success, message, item_id = self.invoice_item_model.create(
-            invoice_id, product_id, stock_number, description, quantity, unit_price
+            invoice_id, product_id, stock_number, description, quantity, unit_price, vat_code
         )
         
         if success:

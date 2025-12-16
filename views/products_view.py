@@ -1,10 +1,10 @@
 """Products view GUI."""
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
-    QDialog, QLineEdit, QComboBox, QMessageBox, QHeaderView
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QDialog, QLineEdit, QComboBox, QMessageBox, QHeaderView, QLabel, QPushButton
 )
 from PySide6.QtCore import Qt, Signal, QEvent
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
 from utils.styles import apply_theme
@@ -48,10 +48,12 @@ class ProductsView(BaseTabbedView):
     def _create_widgets(self):
         """Create and layout UI widgets."""
         # Add action button using base class method
+        # Note: Shortcut is handled globally in main.py, so we don't register it here
+        # to avoid conflicts between WindowShortcut and ApplicationShortcut contexts
         self.add_product_button = self.add_action_button(
             "Add Product (Ctrl+N)",
             self._handle_add_product,
-            "Ctrl+N"
+            None  # Shortcut handled globally in main.py
         )
         
         # Get content layout to add widgets directly (no tabs needed)

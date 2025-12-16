@@ -1088,6 +1088,42 @@ class SuppliersView(BaseTabbedView):
         header_layout = QVBoxLayout()
         header_layout.setSpacing(10)
         
+        # Supplier dropdown
+        supplier_layout = QHBoxLayout()
+        supplier_label = QLabel("Supplier:")
+        supplier_label.setMinimumWidth(150)
+        supplier_layout.addWidget(supplier_label)
+        supplier_combo = QComboBox()
+        supplier_combo.setStyleSheet("font-size: 12px;")
+        
+        # Populate suppliers dropdown
+        suppliers = []
+        if self.supplier_model and hasattr(self, '_current_user_id'):
+            suppliers = self.supplier_model.get_all(self._current_user_id)
+        
+        if not suppliers:
+            QMessageBox.warning(dialog, "Error", "No suppliers available. Please create a supplier first.")
+            dialog.reject()
+            return
+        
+        selected_supplier_index = 0
+        for idx, supplier in enumerate(suppliers):
+            account_num = supplier.get('account_number', '')
+            name = supplier.get('name', '')
+            # Format: "Account Number - Name" or just "Name" if no account number
+            if account_num:
+                display_text = f"{account_num} - {name}"
+            else:
+                display_text = name
+            supplier_combo.addItem(display_text, supplier.get('id'))
+            # Pre-select the supplier that was passed in
+            if supplier.get('id') == supplier_id:
+                selected_supplier_index = idx
+        
+        supplier_combo.setCurrentIndex(selected_supplier_index)
+        supplier_layout.addWidget(supplier_combo, stretch=1)
+        header_layout.addLayout(supplier_layout)
+        
         # Invoice Number
         inv_num_layout = QHBoxLayout()
         inv_num_label = QLabel("Invoice Number:")
@@ -1149,17 +1185,20 @@ class SuppliersView(BaseTabbedView):
         invoice_items_data = []  # List of dicts: {stock_number, description, quantity, unit_price, vat_code}
         
         # Add Item button
+        def open_add_item_dialog():
+            """Open add item dialog with current supplier selection."""
+            current_supplier_id = supplier_combo.currentData()
+            if current_supplier_id is None:
+                current_supplier_id = supplier_id  # Fallback to original
+            self._add_invoice_item_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
+        
         add_item_btn = QPushButton("Add Item (Ctrl+I)")
-        add_item_btn.clicked.connect(
-            lambda: self._add_invoice_item_dialog(dialog, items_table, supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
-        )
+        add_item_btn.clicked.connect(open_add_item_dialog)
         layout.addWidget(add_item_btn)
         
         # Add Item shortcut
         add_item_shortcut = QShortcut(QKeySequence("Ctrl+I"), dialog)
-        add_item_shortcut.activated.connect(
-            lambda: self._add_invoice_item_dialog(dialog, items_table, supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
-        )
+        add_item_shortcut.activated.connect(open_add_item_dialog)
         
         # Totals
         totals_layout = QVBoxLayout()
@@ -1219,8 +1258,12 @@ class SuppliersView(BaseTabbedView):
             """Open basket dialog to edit/delete an invoice item."""
             if 0 <= row < len(invoice_items_data):
                 item_to_edit = invoice_items_data[row]
+                # Get current supplier from dropdown
+                current_supplier_id = supplier_combo.currentData()
+                if current_supplier_id is None:
+                    current_supplier_id = supplier_id  # Fallback to original
                 # Open basket dialog in edit mode
-                self._add_invoice_item_dialog(dialog, items_table, supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table, edit_item=item_to_edit, edit_row=row)
+                self._add_invoice_item_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table, edit_item=item_to_edit, edit_row=row)
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -1235,12 +1278,18 @@ class SuppliersView(BaseTabbedView):
                 QMessageBox.warning(dialog, "Error", "At least one item is required")
                 return
             
+            # Get selected supplier from dropdown
+            selected_supplier_id = supplier_combo.currentData()
+            if selected_supplier_id is None:
+                QMessageBox.warning(dialog, "Error", "Please select a supplier")
+                return
+            
             invoice_date = date_entry.date().toString("yyyy-MM-dd")
             # VAT rate is now per-item, so pass 0.0 as default
             vat_rate = 0.0
             
             success, message, invoice_id = self.invoice_controller.create_invoice(
-                supplier_id, inv_num_entry.text().strip(), invoice_date, vat_rate
+                selected_supplier_id, inv_num_entry.text().strip(), invoice_date, vat_rate
             )
             
             if not success:
@@ -1253,20 +1302,19 @@ class SuppliersView(BaseTabbedView):
                 desc = item['description']
                 qty = item['quantity']
                 price = item['unit_price']
+                vat_code = item.get('vat_code', 'S')
                 
-                # Try to find product by stock number
-                product_id = None
-                if self.invoice_controller and hasattr(self.invoice_controller, 'product_model'):
-                    # This would need to be set up in the controller
-                    pass
+                # Get product_id from item (stored when adding to basket)
+                product_id = item.get('product_id')
                 
                 self.invoice_controller.add_invoice_item(
-                    invoice_id, product_id, stock_num, desc, qty, price
+                    invoice_id, product_id, stock_num, desc, qty, price, vat_code
                 )
             
             QMessageBox.information(dialog, "Success", "Invoice created successfully")
             dialog.accept()
-            parent_dialog.accept()  # Close parent dialog to refresh
+            if parent_dialog is not None:
+                parent_dialog.accept()  # Close parent dialog to refresh
             
         save_btn = QPushButton("Save (Ctrl+Enter)")
         save_btn.setDefault(True)
@@ -1362,9 +1410,14 @@ class SuppliersView(BaseTabbedView):
         products_layout.addWidget(no_results_label)
         
         products_table = ProductSearchTableWidget(lambda row: add_to_basket_from_row(row))
-        products_table.setColumnCount(4)
-        products_table.setHorizontalHeaderLabels(["Stock #", "Description", "Type", "Action"])
-        products_table.horizontalHeader().setStretchLastSection(True)
+        products_table.setColumnCount(3)
+        products_table.setHorizontalHeaderLabels(["Stock #", "Description", "Type"])
+        # Set fixed column widths for consistency
+        products_table.setColumnWidth(0, 150)  # Stock #
+        products_table.setColumnWidth(2, 150)  # Type
+        products_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        products_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        products_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         products_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         products_table.setAlternatingRowColors(True)
@@ -1524,11 +1577,24 @@ class SuppliersView(BaseTabbedView):
         else:
             basket_table.setColumnCount(6)
             basket_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "VAT Code", "Remove"])
-        basket_table.horizontalHeader().setStretchLastSection(True)
+        basket_table.horizontalHeader().setStretchLastSection(False)
         basket_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         basket_table.setAlternatingRowColors(True)
         basket_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         basket_table.setMinimumHeight(300)
+        # Set fixed column widths for consistency
+        basket_table.setColumnWidth(0, 120)  # Stock #
+        basket_table.setColumnWidth(1, 300)  # Description
+        basket_table.setColumnWidth(2, 100)  # Quantity
+        basket_table.setColumnWidth(3, 120)  # Unit Price
+        basket_table.setColumnWidth(4, 100)  # VAT Code
+        basket_table.setColumnWidth(5, 100)  # Remove/Delete
+        basket_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        basket_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        basket_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        basket_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        basket_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        basket_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
         main_layout.addWidget(basket_table)
         
         # Basket data storage
@@ -1565,14 +1631,6 @@ class SuppliersView(BaseTabbedView):
                     products_table.setItem(row, 0, QTableWidgetItem(product.get('stock_number', '')))
                     products_table.setItem(row, 1, QTableWidgetItem(product.get('description', '')))
                     products_table.setItem(row, 2, QTableWidgetItem(product.get('type', '')))
-                    
-                    # Add button
-                    add_btn = QPushButton("Add")
-                    add_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-                    add_btn.clicked.connect(lambda checked, p=product: show_add_product_dialog(p))
-                    products_table.setCellWidget(row, 3, add_btn)
-                
-                products_table.resizeColumnsToContents()
                 
                 # Select and highlight first row if results exist
                 products_table.selectRow(0)
@@ -1625,8 +1683,6 @@ class SuppliersView(BaseTabbedView):
                 remove_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
                 remove_btn.clicked.connect(lambda checked, r=row: remove_from_basket(r))
                 basket_table.setCellWidget(row, 5, remove_btn)
-            
-            basket_table.resizeColumnsToContents()
         
         def update_basket_item(row, field, value):
             """Update basket item field."""
@@ -1751,7 +1807,7 @@ class SuppliersView(BaseTabbedView):
         dialog.exec()
     
     def _view_invoice_dialog(self, parent_dialog: QDialog, supplier_id: int, invoice_id: int):
-        """View invoice dialog - displays invoice details in read-only format."""
+        """Edit invoice dialog - allows editing invoice details and items."""
         if not self.invoice_controller:
             QMessageBox.warning(self, "Error", "Invoice controller not available")
             return
@@ -1769,7 +1825,7 @@ class SuppliersView(BaseTabbedView):
         outstanding = self.invoice_controller.get_invoice_outstanding_balance(invoice_id)
         
         dialog = QDialog(parent_dialog)
-        dialog.setWindowTitle(f"Invoice {invoice['invoice_number']}")
+        dialog.setWindowTitle(f"Edit Invoice {invoice['invoice_number']}")
         dialog.setModal(True)
         dialog.setMinimumSize(800, 600)
         dialog.resize(800, 600)
@@ -1786,114 +1842,308 @@ class SuppliersView(BaseTabbedView):
         header_layout = QVBoxLayout()
         header_layout.setSpacing(10)
         
-        # Title
-        title_label = QLabel(f"Invoice {invoice['invoice_number']}")
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        header_layout.addWidget(title_label)
+        # Supplier dropdown
+        supplier_layout = QHBoxLayout()
+        supplier_label = QLabel("Supplier:")
+        supplier_label.setMinimumWidth(150)
+        supplier_layout.addWidget(supplier_label)
+        supplier_combo = QComboBox()
+        supplier_combo.setStyleSheet("font-size: 12px;")
         
-        # Invoice Number (read-only)
+        # Populate suppliers dropdown
+        suppliers = []
+        if self.supplier_model and hasattr(self, '_current_user_id'):
+            suppliers = self.supplier_model.get_all(self._current_user_id)
+        
+        selected_supplier_index = 0
+        # Get internal supplier ID from invoice
+        invoice_supplier_internal_id = invoice.get('supplier_id')
+        for idx, supp in enumerate(suppliers):
+            account_num = supp.get('account_number', '')
+            name = supp.get('name', '')
+            if account_num:
+                display_text = f"{account_num} - {name}"
+            else:
+                display_text = name
+            supplier_combo.addItem(display_text, supp.get('id'))
+            # Pre-select the invoice's supplier (compare internal_id)
+            if supp.get('internal_id') == invoice_supplier_internal_id:
+                selected_supplier_index = idx
+        
+        supplier_combo.setCurrentIndex(selected_supplier_index)
+        supplier_layout.addWidget(supplier_combo, stretch=1)
+        header_layout.addLayout(supplier_layout)
+        
+        # Invoice Number (editable)
         inv_num_layout = QHBoxLayout()
         inv_num_label = QLabel("Invoice Number:")
         inv_num_label.setMinimumWidth(150)
-        inv_num_label.setStyleSheet("font-weight: bold;")
         inv_num_layout.addWidget(inv_num_label)
-        inv_num_value = QLabel(invoice['invoice_number'])
-        inv_num_layout.addWidget(inv_num_value, stretch=1)
+        inv_num_entry = QLineEdit(invoice['invoice_number'])
+        inv_num_layout.addWidget(inv_num_entry, stretch=1)
         header_layout.addLayout(inv_num_layout)
         
-        # Invoice Date (read-only)
+        # Invoice Date (editable)
         date_layout = QHBoxLayout()
         date_label = QLabel("Invoice Date:")
         date_label.setMinimumWidth(150)
-        date_label.setStyleSheet("font-weight: bold;")
         date_layout.addWidget(date_label)
-        date_value = QLabel(invoice['invoice_date'])
-        date_layout.addWidget(date_value, stretch=1)
+        date_entry = QDateEdit()
+        invoice_date = QDate.fromString(invoice['invoice_date'], "yyyy-MM-dd")
+        date_entry.setDate(invoice_date)
+        date_entry.setCalendarPopup(True)
+        date_entry.setStyleSheet("font-size: 12px;")
+        date_layout.addWidget(date_entry, stretch=1)
         header_layout.addLayout(date_layout)
-        
-        # VAT Rate (read-only)
-        vat_layout = QHBoxLayout()
-        vat_label = QLabel("VAT Rate (%):")
-        vat_label.setMinimumWidth(150)
-        vat_label.setStyleSheet("font-weight: bold;")
-        vat_layout.addWidget(vat_label)
-        vat_value = QLabel(f"{invoice['vat_rate']:.2f}%")
-        vat_layout.addWidget(vat_value, stretch=1)
-        header_layout.addLayout(vat_layout)
-        
-        # Status (read-only)
-        status_layout = QHBoxLayout()
-        status_label = QLabel("Status:")
-        status_label.setMinimumWidth(150)
-        status_label.setStyleSheet("font-weight: bold;")
-        status_layout.addWidget(status_label)
-        status_value = QLabel(invoice['status'])
-        status_layout.addWidget(status_value, stretch=1)
-        header_layout.addLayout(status_layout)
         
         layout.addLayout(header_layout)
         
-        # Items table
+        # Items table - use same structure as create invoice
         items_label = QLabel("Items:")
-        items_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        items_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(items_label)
         
-        items_table = QTableWidget()
-        items_table.setColumnCount(5)
-        items_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "Line Total"])
+        # Custom table widget with Enter key and double-click support
+        class InvoiceItemsTableWidget(QTableWidget):
+            def __init__(self, edit_callback):
+                super().__init__()
+                self.edit_callback = edit_callback
+            
+            def keyPressEvent(self, event):
+                """Handle Enter key to edit selected item."""
+                if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                    if self.selectedItems():
+                        row = self.selectedItems()[0].row()
+                        self.edit_callback(row)
+                        event.accept()
+                        return
+                super().keyPressEvent(event)
+        
+        items_table = InvoiceItemsTableWidget(lambda row: edit_invoice_item(row))
+        items_table.setColumnCount(6)
+        items_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "VAT Code", "Line Total"])
         items_table.horizontalHeader().setStretchLastSection(True)
         items_table.setAlternatingRowColors(True)
-        items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        items_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         items_table.setMinimumHeight(200)
-        
-        # Load items
-        if invoice_items:
-            items_table.setRowCount(len(invoice_items))
-            for row, item in enumerate(invoice_items):
-                items_table.setItem(row, 0, QTableWidgetItem(item.get('stock_number', '')))
-                items_table.setItem(row, 1, QTableWidgetItem(item.get('description', '')))
-                items_table.setItem(row, 2, QTableWidgetItem(str(item.get('quantity', 0))))
-                items_table.setItem(row, 3, QTableWidgetItem(f"£{item.get('unit_price', 0):.2f}"))
-                line_total = item.get('quantity', 0) * item.get('unit_price', 0)
-                items_table.setItem(row, 4, QTableWidgetItem(f"£{line_total:.2f}"))
-        
-        items_table.resizeColumnsToContents()
+        items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Read-only
+        items_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        items_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        items_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        items_table.itemDoubleClicked.connect(lambda item, row=0: edit_invoice_item(item.row()))
         layout.addWidget(items_table)
+        
+        # Store invoice items data
+        invoice_items_data = []
+        
+        # Load existing items into invoice_items_data
+        for item in invoice_items:
+            invoice_items_data.append({
+                'item_id': item.get('id'),  # Store item ID for updates/deletes
+                'product_id': item.get('product_id'),
+                'stock_number': item.get('stock_number', ''),
+                'description': item.get('description', ''),
+                'quantity': item.get('quantity', 0),
+                'unit_price': item.get('unit_price', 0),
+                'vat_code': item.get('vat_code', 'S')  # Get from database
+            })
+        
+        def update_invoice_table():
+            """Update the invoice items table from invoice_items_data."""
+            items_table.setRowCount(len(invoice_items_data))
+            for row, item in enumerate(invoice_items_data):
+                items_table.setItem(row, 0, QTableWidgetItem(item['stock_number']))
+                items_table.setItem(row, 1, QTableWidgetItem(item['description']))
+                items_table.setItem(row, 2, QTableWidgetItem(str(item['quantity'])))
+                items_table.setItem(row, 3, QTableWidgetItem(str(item['unit_price'])))
+                items_table.setItem(row, 4, QTableWidgetItem(item.get('vat_code', 'S')))
+                line_total = item['quantity'] * item['unit_price']
+                items_table.setItem(row, 5, QTableWidgetItem(f"£{line_total:.2f}"))
+            update_totals()
+        
+        def update_totals():
+            """Update totals from items."""
+            subtotal = 0.0
+            vat_amount = 0.0
+            
+            # VAT rates by code: S=Standard (20%), E=Exempt (0%), Z=Zero (0%)
+            vat_rates = {'S': 20.0, 'E': 0.0, 'Z': 0.0}
+            
+            for item in invoice_items_data:
+                line_total = item['quantity'] * item['unit_price']
+                subtotal += line_total
+                
+                vat_code = item.get('vat_code', 'S').strip().upper()
+                vat_rate = vat_rates.get(vat_code, 20.0)
+                line_vat = line_total * (vat_rate / 100.0)
+                vat_amount += line_vat
+            
+            total = subtotal + vat_amount
+            
+            subtotal_label.setText(f"Subtotal: £{subtotal:.2f}")
+            vat_label.setText(f"VAT: £{vat_amount:.2f}")
+            total_label.setText(f"Total: £{total:.2f}")
+        
+        def edit_invoice_item(row):
+            """Open basket dialog to edit/delete an invoice item."""
+            if 0 <= row < len(invoice_items_data):
+                item_to_edit = invoice_items_data[row]
+                # Open basket dialog in edit mode
+                current_supplier_id = supplier_combo.currentData()
+                if current_supplier_id is None:
+                    current_supplier_id = supplier_id
+                self._add_invoice_item_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table, edit_item=item_to_edit, edit_row=row)
+        
+        # Add Item button
+        def open_add_item_dialog():
+            """Open add item dialog with current supplier selection."""
+            current_supplier_id = supplier_combo.currentData()
+            if current_supplier_id is None:
+                current_supplier_id = supplier_id
+            self._add_invoice_item_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
+        
+        add_item_btn = QPushButton("Add Item (Ctrl+I)")
+        add_item_btn.clicked.connect(open_add_item_dialog)
+        layout.addWidget(add_item_btn)
+        
+        # Add Item shortcut
+        add_item_shortcut = QShortcut(QKeySequence("Ctrl+I"), dialog)
+        add_item_shortcut.activated.connect(open_add_item_dialog)
         
         # Totals
         totals_layout = QVBoxLayout()
         totals_layout.setSpacing(5)
         
-        subtotal_label = QLabel(f"Subtotal: £{invoice.get('subtotal', 0):.2f}")
+        subtotal_label = QLabel("Subtotal: £0.00")
         subtotal_label.setStyleSheet("font-size: 12px;")
         totals_layout.addWidget(subtotal_label)
         
-        vat_amount_label = QLabel(f"VAT: £{invoice.get('vat_amount', 0):.2f}")
-        vat_amount_label.setStyleSheet("font-size: 12px;")
-        totals_layout.addWidget(vat_amount_label)
+        vat_label = QLabel("VAT: £0.00")
+        vat_label.setStyleSheet("font-size: 12px;")
+        totals_layout.addWidget(vat_label)
         
-        total_label = QLabel(f"Total: £{invoice.get('total', 0):.2f}")
+        total_label = QLabel("Total: £0.00")
         total_label.setStyleSheet("font-size: 14px; font-weight: bold;")
         totals_layout.addWidget(total_label)
         
-        outstanding_label = QLabel(f"Outstanding: £{outstanding:.2f}")
-        outstanding_label.setStyleSheet("font-size: 12px; color: #d32f2f;")
-        totals_layout.addWidget(outstanding_label)
-        
         layout.addLayout(totals_layout)
+        
+        # Initial table update
+        update_invoice_table()
         
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        close_btn = QPushButton("Close (Esc)")
-        close_btn.setMinimumWidth(140)
-        close_btn.setMinimumHeight(30)
-        close_btn.setDefault(True)
-        close_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        close_btn.clicked.connect(dialog.reject)
-        button_layout.addWidget(close_btn)
+        def handle_save():
+            if not inv_num_entry.text().strip():
+                QMessageBox.warning(dialog, "Error", "Invoice number is required")
+                return
+            
+            if items_table.rowCount() == 0:
+                QMessageBox.warning(dialog, "Error", "At least one item is required")
+                return
+            
+            # Get selected supplier from dropdown
+            selected_supplier_id = supplier_combo.currentData()
+            if selected_supplier_id is None:
+                QMessageBox.warning(dialog, "Error", "Please select a supplier")
+                return
+            
+            invoice_date = date_entry.date().toString("yyyy-MM-dd")
+            vat_rate = 0.0  # Per-item VAT now
+            
+            # Get existing invoice items to compare
+            existing_items = self.invoice_controller.get_invoice_items(invoice_id)
+            existing_item_map = {item.get('id'): item for item in existing_items if item.get('id')}
+            
+            # Get current item IDs from invoice_items_data
+            current_item_ids = {item.get('item_id') for item in invoice_items_data if item.get('item_id')}
+            
+            # Delete items that were removed (not in current list)
+            for existing_item_id, existing_item in existing_item_map.items():
+                if existing_item_id not in current_item_ids:
+                    self.invoice_controller.delete_invoice_item(existing_item_id)
+            
+            # Update or add items
+            for item in invoice_items_data:
+                stock_num = item['stock_number']
+                desc = item['description']
+                qty = item['quantity']
+                price = item['unit_price']
+                product_id = item.get('product_id')
+                item_id = item.get('item_id')
+                
+                if item_id and item_id in existing_item_map:
+                    # Check if item actually changed
+                    existing_item = existing_item_map[item_id]
+                    vat_code = item.get('vat_code', 'S')
+                    if (existing_item.get('quantity') != qty or 
+                        existing_item.get('unit_price') != price or
+                        existing_item.get('stock_number') != stock_num or
+                        existing_item.get('description') != desc or
+                        existing_item.get('vat_code', 'S') != vat_code):
+                        # Item changed - delete old (reverses stock) and add new
+                        self.invoice_controller.delete_invoice_item(item_id)
+                        self.invoice_controller.add_invoice_item(
+                            invoice_id, product_id, stock_num, desc, qty, price, vat_code
+                        )
+                    # If unchanged, do nothing
+                else:
+                    # New item - add it
+                    vat_code = item.get('vat_code', 'S')
+                    self.invoice_controller.add_invoice_item(
+                        invoice_id, product_id, stock_num, desc, qty, price, vat_code
+                    )
+            
+            # Update invoice (supplier change not supported in update method, so skip for now)
+            success, message = self.invoice_controller.update_invoice(
+                invoice_id, inv_num_entry.text().strip(), invoice_date, vat_rate, invoice.get('status', 'pending')
+            )
+            
+            if not success:
+                QMessageBox.critical(dialog, "Error", message)
+                return
+            
+            QMessageBox.information(dialog, "Success", "Invoice updated successfully")
+            dialog.accept()
+            if parent_dialog is not None:
+                parent_dialog.accept()  # Close parent dialog to refresh
+        
+        def handle_delete():
+            """Delete the invoice."""
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Delete",
+                f"Are you sure you want to delete invoice '{inv_num_entry.text()}'? This will reverse stock changes.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                success, message = self.invoice_controller.delete_invoice(invoice_id)
+                if success:
+                    QMessageBox.information(dialog, "Success", "Invoice deleted successfully")
+                    dialog.accept()
+                    if parent_dialog is not None:
+                        parent_dialog.accept()  # Close parent dialog to refresh
+                else:
+                    QMessageBox.critical(dialog, "Error", message)
+        
+        save_btn = QPushButton("Save Changes (Ctrl+Enter)")
+        save_btn.setDefault(True)
+        save_btn.clicked.connect(handle_save)
+        ctrl_enter = QShortcut(QKeySequence("Ctrl+Return"), dialog)
+        ctrl_enter.activated.connect(handle_save)
+        button_layout.addWidget(save_btn)
+        
+        delete_btn = QPushButton("Delete Invoice")
+        delete_btn.setStyleSheet("background-color: #d32f2f; color: white;")
+        delete_btn.clicked.connect(handle_delete)
+        button_layout.addWidget(delete_btn)
+        
+        cancel_btn = QPushButton("Cancel (Esc)")
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(cancel_btn)
         
         layout.addLayout(button_layout)
         

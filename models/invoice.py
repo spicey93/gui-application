@@ -228,7 +228,7 @@ class Invoice:
     
     def calculate_totals(self, invoice_id: int, user_id: int) -> Tuple[bool, str]:
         """
-        Recalculate invoice totals from items.
+        Recalculate invoice totals from items using per-item VAT codes.
         
         Args:
             invoice_id: Invoice ID
@@ -241,24 +241,34 @@ class Invoice:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
                 cursor = conn.cursor()
                 
-                # Get invoice VAT rate
-                cursor.execute("SELECT vat_rate FROM invoices WHERE id = ? AND user_id = ?", (invoice_id, user_id))
-                result = cursor.fetchone()
-                if not result:
+                # Check if invoice exists
+                cursor.execute("SELECT id FROM invoices WHERE id = ? AND user_id = ?", (invoice_id, user_id))
+                if not cursor.fetchone():
                     return False, "Invoice not found"
                 
-                vat_rate = result[0]
-                
-                # Sum line totals from invoice_items
+                # Get all items with their VAT codes
                 cursor.execute("""
-                    SELECT COALESCE(SUM(line_total), 0.0) 
+                    SELECT line_total, COALESCE(vat_code, 'S') as vat_code
                     FROM invoice_items 
                     WHERE invoice_id = ?
                 """, (invoice_id,))
-                subtotal = cursor.fetchone()[0]
                 
-                # Calculate VAT and total
-                vat_amount = subtotal * (vat_rate / 100.0)
+                items = cursor.fetchall()
+                
+                # Calculate subtotal and VAT per item
+                subtotal = 0.0
+                vat_amount = 0.0
+                
+                # VAT rates by code: S=Standard (20%), E=Exempt (0%), Z=Zero (0%)
+                vat_rates = {'S': 20.0, 'E': 0.0, 'Z': 0.0}
+                
+                for line_total, vat_code in items:
+                    subtotal += line_total
+                    vat_code = (vat_code or 'S').strip().upper()
+                    vat_rate = vat_rates.get(vat_code, 20.0)  # Default to 20% if unknown
+                    line_vat = line_total * (vat_rate / 100.0)
+                    vat_amount += line_vat
+                
                 total = subtotal + vat_amount
                 
                 # Update invoice
