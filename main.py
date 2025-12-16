@@ -14,11 +14,14 @@ from models.invoice import Invoice
 from models.invoice_item import InvoiceItem
 from models.payment import Payment
 from models.payment_allocation import PaymentAllocation
+from models.nominal_account import NominalAccount
+from models.journal_entry import JournalEntry
 from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from views.suppliers_view import SuppliersView
 from views.products_view import ProductsView
 from views.inventory_view import InventoryView
+from views.bookkeeper_view import BookkeeperView
 from views.configuration_view import ConfigurationView
 from views.shortcuts_dialog import ShortcutsDialog
 from controllers.login_controller import LoginController
@@ -26,6 +29,7 @@ from controllers.dashboard_controller import DashboardController
 from controllers.suppliers_controller import SuppliersController
 from controllers.products_controller import ProductsController
 from controllers.inventory_controller import InventoryController
+from controllers.bookkeeper_controller import BookkeeperController
 from controllers.configuration_controller import ConfigurationController
 from controllers.invoice_controller import InvoiceController
 from controllers.payment_controller import PaymentController
@@ -55,6 +59,8 @@ class Application(QMainWindow):
         self.invoice_item_model = InvoiceItem()
         self.payment_model = Payment()
         self.payment_allocation_model = PaymentAllocation()
+        self.nominal_account_model = NominalAccount()
+        self.journal_entry_model = JournalEntry()
         
         # Current user ID (None until login)
         self.current_user_id: Optional[int] = None
@@ -69,6 +75,7 @@ class Application(QMainWindow):
         self.suppliers_view = SuppliersView()
         self.products_view = ProductsView()
         self.inventory_view = InventoryView()
+        self.bookkeeper_view = BookkeeperView()
         self.configuration_view = ConfigurationView()
         
         # Add views to stacked widget
@@ -77,6 +84,7 @@ class Application(QMainWindow):
         self.suppliers_index = self.stacked_widget.addWidget(self.suppliers_view)
         self.products_index = self.stacked_widget.addWidget(self.products_view)
         self.inventory_index = self.stacked_widget.addWidget(self.inventory_view)
+        self.bookkeeper_index = self.stacked_widget.addWidget(self.bookkeeper_view)
         self.configuration_index = self.stacked_widget.addWidget(self.configuration_view)
         
         # Show login view initially
@@ -88,6 +96,7 @@ class Application(QMainWindow):
         self.suppliers_controller = None
         self.products_controller = None
         self.inventory_controller = None
+        self.bookkeeper_controller = None
         self.configuration_controller = None
         self.invoice_controller = None
         self.payment_controller = None
@@ -98,6 +107,7 @@ class Application(QMainWindow):
         self.dashboard_controller.suppliers_requested.connect(self.on_suppliers)
         self.dashboard_controller.products_requested.connect(self.on_products)
         self.dashboard_controller.inventory_requested.connect(self.on_inventory)
+        self.dashboard_controller.bookkeeper_requested.connect(self.on_bookkeeper)
         self.dashboard_controller.configuration_requested.connect(self.on_configuration)
         
         # Center the window
@@ -137,6 +147,10 @@ class Application(QMainWindow):
         # Ctrl+I: Inventory
         self.shortcut_inventory = QShortcut(QKeySequence("Ctrl+I"), self)
         self.shortcut_inventory.activated.connect(self._navigate_to_inventory)
+        
+        # Ctrl+B: Book Keeper
+        self.shortcut_bookkeeper = QShortcut(QKeySequence("Ctrl+B"), self)
+        self.shortcut_bookkeeper.activated.connect(self._navigate_to_bookkeeper)
         
         # Ctrl+O: Configuration
         self.shortcut_configuration = QShortcut(QKeySequence("Ctrl+O"), self)
@@ -204,6 +218,17 @@ class Application(QMainWindow):
             self.setMinimumSize(800, 600)
             self._center_window()
     
+    def _navigate_to_bookkeeper(self):
+        """Navigate to bookkeeper if logged in."""
+        if self.current_user_id is not None:
+            if self.bookkeeper_controller:
+                self.bookkeeper_controller.refresh_accounts()
+            self.bookkeeper_view.nav_panel.set_current_view("bookkeeper")
+            self.stacked_widget.setCurrentIndex(self.bookkeeper_index)
+            self.setWindowTitle("Book Keeper")
+            self.setMinimumSize(800, 600)
+            self._center_window()
+    
     def _navigate_to_configuration(self):
         """Navigate to configuration if logged in."""
         if self.current_user_id is not None:
@@ -219,13 +244,15 @@ class Application(QMainWindow):
             self.on_logout()
     
     def _handle_add_shortcut(self):
-        """Handle add item keyboard shortcut (supplier or product)."""
+        """Handle add item keyboard shortcut (supplier, product, or account)."""
         if self.current_user_id is not None:
             current_index = self.stacked_widget.currentIndex()
             if current_index == self.suppliers_index:
                 self.suppliers_view.add_supplier()
             elif current_index == self.products_index:
                 self.products_view.add_product()
+            elif current_index == self.bookkeeper_index:
+                self.bookkeeper_view.add_account()
     
     def _handle_refresh_shortcut(self):
         """Handle refresh keyboard shortcut."""
@@ -240,6 +267,9 @@ class Application(QMainWindow):
             elif current_index == self.inventory_index:
                 if self.inventory_controller:
                     self.inventory_controller.refresh_inventory()
+            elif current_index == self.bookkeeper_index:
+                if self.bookkeeper_controller:
+                    self.bookkeeper_controller.refresh_accounts()
     
     def _show_shortcuts_help(self):
         """Show keyboard shortcuts help dialog."""
@@ -331,6 +361,23 @@ class Application(QMainWindow):
         else:
             self.inventory_controller.set_user_id(user_id)
         
+        # Initialize or update bookkeeper controller with user_id
+        if self.bookkeeper_controller is None:
+            self.bookkeeper_controller = BookkeeperController(
+                self.bookkeeper_view,
+                self.nominal_account_model,
+                self.journal_entry_model,
+                user_id
+            )
+            self.bookkeeper_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.bookkeeper_controller.suppliers_requested.connect(self.on_suppliers)
+            self.bookkeeper_controller.products_requested.connect(self.on_products)
+            self.bookkeeper_controller.inventory_requested.connect(self.on_inventory)
+            self.bookkeeper_controller.configuration_requested.connect(self.on_configuration)
+            self.bookkeeper_controller.logout_requested.connect(self.on_logout)
+        else:
+            self.bookkeeper_controller.set_user_id(user_id)
+        
         # Initialize configuration controller
         if self.configuration_controller is None:
             self.configuration_controller = ConfigurationController(
@@ -390,6 +437,19 @@ class Application(QMainWindow):
         # Switch to inventory view
         self.stacked_widget.setCurrentIndex(self.inventory_index)
         self.setWindowTitle("Inventory")
+        self.setMinimumSize(800, 600)
+        self._center_window()
+    
+    def on_bookkeeper(self):
+        """Handle navigation to bookkeeper."""
+        # Refresh accounts for current user
+        if self.bookkeeper_controller:
+            self.bookkeeper_controller.refresh_accounts()
+        # Update navigation highlighting
+        self.bookkeeper_view.nav_panel.set_current_view("bookkeeper")
+        # Switch to bookkeeper view
+        self.stacked_widget.setCurrentIndex(self.bookkeeper_index)
+        self.setWindowTitle("Book Keeper")
         self.setMinimumSize(800, 600)
         self._center_window()
     
