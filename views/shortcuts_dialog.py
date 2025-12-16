@@ -42,6 +42,7 @@ class ShortcutsDialog(QDialog):
         <b>Ctrl+S</b> - Navigate to Suppliers<br>
         <b>Ctrl+P</b> - Navigate to Products<br>
         <b>Ctrl+L</b> - Logout<br>
+        <b>Ctrl+Q</b> - Exit application<br>
         <b>F1</b> - Show this help dialog<br><br>
         
         <b>Standard Navigation:</b><br><br>

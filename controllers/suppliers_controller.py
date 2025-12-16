@@ -5,6 +5,7 @@ from PySide6.QtCore import QObject, Signal
 if TYPE_CHECKING:
     from views.suppliers_view import SuppliersView
     from models.supplier import Supplier
+    from models.product import Product
     from controllers.invoice_controller import InvoiceController
     from controllers.payment_controller import PaymentController
 
@@ -20,7 +21,8 @@ class SuppliersController(QObject):
     
     def __init__(self, suppliers_view: "SuppliersView", supplier_model: "Supplier", user_id: int,
                  invoice_controller: Optional["InvoiceController"] = None,
-                 payment_controller: Optional["PaymentController"] = None):
+                 payment_controller: Optional["PaymentController"] = None,
+                 product_model: Optional["Product"] = None):
         """Initialize the suppliers controller."""
         super().__init__()
         self.suppliers_view = suppliers_view
@@ -28,6 +30,7 @@ class SuppliersController(QObject):
         self.user_id = user_id
         self.invoice_controller = invoice_controller
         self.payment_controller = payment_controller
+        self.product_model = product_model
         
         # Connect view signals to controller handlers
         self.suppliers_view.dashboard_requested.connect(self.handle_dashboard)
@@ -57,7 +60,8 @@ class SuppliersController(QObject):
         # Set controllers in view
         if self.invoice_controller and self.payment_controller:
             self.suppliers_view.set_controllers(
-                self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id
+                self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id,
+                self.product_model
             )
         
         # Load initial suppliers
@@ -72,7 +76,8 @@ class SuppliersController(QObject):
             self.payment_controller.set_user_id(user_id)
         if self.invoice_controller and self.payment_controller:
             self.suppliers_view.set_controllers(
-                self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id
+                self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id,
+                self.product_model
             )
         self.refresh_suppliers()
     

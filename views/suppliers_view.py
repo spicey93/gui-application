@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QDialog, QLineEdit, QTabWidget, QMessageBox, QHeaderView,
     QDateEdit, QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit
 )
-from PySide6.QtCore import Qt, Signal, QDate
+from PySide6.QtCore import Qt, Signal, QDate, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable, TYPE_CHECKING
 from views.navigation_panel import NavigationPanel
@@ -95,12 +95,14 @@ class SuppliersView(QWidget):
     
     def set_controllers(self, invoice_controller: "InvoiceController", 
                       payment_controller: "PaymentController",
-                      supplier_model: "Supplier", user_id: int):
+                      supplier_model: "Supplier", user_id: int,
+                      product_model=None):
         """Set the invoice and payment controllers."""
         self.invoice_controller = invoice_controller
         self.payment_controller = payment_controller
         self.supplier_model = supplier_model
         self._current_user_id = user_id
+        self.product_model = product_model
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
@@ -172,13 +174,24 @@ class SuppliersView(QWidget):
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
-        # Tab order: Navigation panel -> Add Supplier -> Table
-        self.setTabOrder(self.nav_panel.logout_button, self.add_supplier_button)
-        self.setTabOrder(self.add_supplier_button, self.suppliers_table)
+        # Tab order: Table -> Add Supplier -> Navigation panel
+        # This makes the table the first focusable element
+        self.setTabOrder(self.suppliers_table, self.add_supplier_button)
+        self.setTabOrder(self.add_supplier_button, self.nav_panel.logout_button)
         
         # Arrow keys work automatically in QTableWidget
         # Enter key on table row opens details
         self.suppliers_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    
+    def showEvent(self, event: QEvent):
+        """Handle show event - set focus to table if it has data."""
+        super().showEvent(event)
+        # Set focus to table if it has rows
+        if self.suppliers_table.rowCount() > 0:
+            self.suppliers_table.setFocus()
+            # Ensure first row is selected if nothing is selected
+            if not self.suppliers_table.selectedItems():
+                self.suppliers_table.selectRow(0)
     
     def _handle_dashboard(self):
         """Handle dashboard button click."""
@@ -291,7 +304,7 @@ class SuppliersView(QWidget):
         info_layout.addLayout(name_layout)
         
         info_layout.addStretch()
-        notebook.addTab(info_frame, "Info")
+        notebook.addTab(info_frame, "Info (Ctrl+1)")
         
         # Invoices tab
         invoices_frame = QWidget()
@@ -345,7 +358,7 @@ class SuppliersView(QWidget):
         
         invoices_table.resizeColumnsToContents()
         invoices_layout.addWidget(invoices_table)
-        notebook.addTab(invoices_frame, "Invoices")
+        notebook.addTab(invoices_frame, "Invoices (Ctrl+2)")
         
         # Payments tab
         payments_frame = QWidget()
@@ -398,7 +411,7 @@ class SuppliersView(QWidget):
         
         payments_table.resizeColumnsToContents()
         payments_layout.addWidget(payments_table)
-        notebook.addTab(payments_frame, "Payments")
+        notebook.addTab(payments_frame, "Payments (Ctrl+3)")
         
         # Actions tab
         actions_frame = QWidget()
@@ -414,7 +427,7 @@ class SuppliersView(QWidget):
         actions_layout.addWidget(delete_btn)
         actions_layout.addStretch()
         
-        notebook.addTab(actions_frame, "Actions")
+        notebook.addTab(actions_frame, "Actions (Ctrl+4)")
         
         layout.addWidget(notebook)
         
@@ -613,6 +626,13 @@ class SuppliersView(QWidget):
         if len(suppliers) > 0:
             header.resizeSection(1, 200)
             header.resizeSection(3, 150)
+        
+        # Auto-select first row and set focus to table if data exists
+        if len(suppliers) > 0:
+            self.suppliers_table.selectRow(0)
+            self.suppliers_table.setFocus()
+            # Ensure the first row is visible
+            self.suppliers_table.scrollToItem(self.suppliers_table.item(0, 0))
     
     def show_success(self, message: str):
         """Display a success message."""
@@ -703,7 +723,7 @@ class SuppliersView(QWidget):
         # Add Item button
         add_item_btn = QPushButton("Add Item")
         add_item_btn.clicked.connect(
-            lambda: self._add_invoice_item_dialog(dialog, items_table, supplier_id)
+            lambda: self._add_invoice_item_dialog(dialog, items_table, supplier_id, update_totals)
         )
         layout.addWidget(add_item_btn)
         
@@ -810,95 +830,273 @@ class SuppliersView(QWidget):
         inv_num_entry.setFocus()
         dialog.exec()
     
-    def _add_invoice_item_dialog(self, parent_dialog: QDialog, items_table: QTableWidget, supplier_id: int):
-        """Add item to invoice dialog."""
+    def _add_invoice_item_dialog(self, parent_dialog: QDialog, items_table: QTableWidget, supplier_id: int, update_totals_callback=None):
+        """Product search and basket dialog for adding items to invoice."""
+        if not self.product_model:
+            QMessageBox.warning(parent_dialog, "Error", "Product model not available")
+            return
+        
         dialog = QDialog(parent_dialog)
-        dialog.setWindowTitle("Add Item")
+        dialog.setWindowTitle("Add Products to Invoice")
         dialog.setModal(True)
-        dialog.setMinimumSize(500, 300)
+        dialog.setMinimumSize(900, 700)
+        dialog.resize(900, 700)
         
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
         esc_shortcut.activated.connect(dialog.reject)
         
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(15)
-        layout.setContentsMargins(30, 30, 30, 30)
+        main_layout = QVBoxLayout(dialog)
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(30, 30, 30, 30)
         
-        # Stock Number
-        stock_layout = QHBoxLayout()
-        stock_label = QLabel("Stock Number:")
-        stock_label.setMinimumWidth(150)
-        stock_layout.addWidget(stock_label)
-        stock_entry = QLineEdit()
-        stock_layout.addWidget(stock_entry, stretch=1)
-        layout.addLayout(stock_layout)
+        # Title
+        title_label = QLabel("Search Products and Add to Basket")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        main_layout.addWidget(title_label)
         
-        # Description
-        desc_layout = QHBoxLayout()
-        desc_label = QLabel("Description:")
-        desc_label.setMinimumWidth(150)
-        desc_layout.addWidget(desc_label)
-        desc_entry = QLineEdit()
-        desc_layout.addWidget(desc_entry, stretch=1)
-        layout.addLayout(desc_layout)
+        # Split layout: Products on left, Basket on right
+        split_layout = QHBoxLayout()
+        split_layout.setSpacing(20)
         
-        # Quantity
-        qty_layout = QHBoxLayout()
-        qty_label = QLabel("Quantity:")
-        qty_label.setMinimumWidth(150)
-        qty_layout.addWidget(qty_label)
-        qty_entry = QDoubleSpinBox()
-        qty_entry.setRange(0.01, 999999)
-        qty_entry.setValue(1.0)
-        qty_layout.addWidget(qty_entry, stretch=1)
-        layout.addLayout(qty_layout)
+        # Left side: Product search and selection
+        left_frame = QWidget()
+        left_layout = QVBoxLayout(left_frame)
+        left_layout.setSpacing(10)
+        left_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Unit Price
-        price_layout = QHBoxLayout()
-        price_label = QLabel("Unit Price:")
-        price_label.setMinimumWidth(150)
-        price_layout.addWidget(price_label)
-        price_entry = QDoubleSpinBox()
-        price_entry.setRange(0, 999999)
-        price_entry.setPrefix("£")
-        price_entry.setValue(0.0)
-        price_layout.addWidget(price_entry, stretch=1)
-        layout.addLayout(price_layout)
+        # Search field
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setMinimumWidth(80)
+        search_layout.addWidget(search_label)
+        search_entry = QLineEdit()
+        search_entry.setPlaceholderText("Search by stock number or description...")
+        search_entry.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        search_layout.addWidget(search_entry, stretch=1)
+        left_layout.addLayout(search_layout)
         
-        layout.addStretch()
+        # Products table with Enter key support
+        class ProductSearchTableWidget(QTableWidget):
+            def __init__(self, add_callback):
+                super().__init__()
+                self.add_callback = add_callback
+            
+            def keyPressEvent(self, event):
+                if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                    if self.selectedItems():
+                        row = self.selectedItems()[0].row()
+                        self.add_callback(row)
+                        event.accept()
+                        return
+                super().keyPressEvent(event)
+        
+        products_table = ProductSearchTableWidget(lambda row: add_to_basket_from_row(row))
+        products_table.setColumnCount(4)
+        products_table.setHorizontalHeaderLabels(["Stock #", "Description", "Type", "Action"])
+        products_table.horizontalHeader().setStretchLastSection(True)
+        products_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        products_table.setAlternatingRowColors(True)
+        products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        products_table.setMinimumHeight(300)
+        left_layout.addWidget(products_table)
+        
+        # Store filtered products for Enter key
+        filtered_products_list = []
+        
+        def add_to_basket_from_row(row):
+            """Add product to basket from table row."""
+            if 0 <= row < len(filtered_products_list):
+                add_to_basket(filtered_products_list[row])
+        
+        # Right side: Basket
+        right_frame = QWidget()
+        right_layout = QVBoxLayout(right_frame)
+        right_layout.setSpacing(10)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        
+        basket_label = QLabel("Basket")
+        basket_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        right_layout.addWidget(basket_label)
+        
+        # Basket table
+        basket_table = QTableWidget()
+        basket_table.setColumnCount(5)
+        basket_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "Remove"])
+        basket_table.horizontalHeader().setStretchLastSection(True)
+        basket_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        basket_table.setAlternatingRowColors(True)
+        basket_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        basket_table.setMinimumHeight(300)
+        right_layout.addWidget(basket_table)
+        
+        # Add both frames to split layout
+        split_layout.addWidget(left_frame, stretch=2)
+        split_layout.addWidget(right_frame, stretch=1)
+        main_layout.addLayout(split_layout)
+        
+        # Basket data storage
+        basket_items = []  # List of dicts: {product_id, stock_number, description, quantity, unit_price}
+        
+        # Load all products
+        all_products = self.product_model.get_all(self._current_user_id) if hasattr(self, '_current_user_id') else []
+        
+        def filter_products():
+            """Filter products based on search text."""
+            nonlocal filtered_products_list
+            search_text = search_entry.text().lower().strip()
+            if not search_text:
+                filtered_products_list = all_products
+            else:
+                filtered_products_list = [
+                    p for p in all_products
+                    if search_text in p.get('stock_number', '').lower() or
+                       search_text in p.get('description', '').lower()
+                ]
+            
+            products_table.setRowCount(len(filtered_products_list))
+            for row, product in enumerate(filtered_products_list):
+                products_table.setItem(row, 0, QTableWidgetItem(product.get('stock_number', '')))
+                products_table.setItem(row, 1, QTableWidgetItem(product.get('description', '')))
+                products_table.setItem(row, 2, QTableWidgetItem(product.get('type', '')))
+                
+                # Add button
+                add_btn = QPushButton("Add")
+                add_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                add_btn.clicked.connect(lambda checked, p=product: add_to_basket(p))
+                products_table.setCellWidget(row, 3, add_btn)
+            
+            products_table.resizeColumnsToContents()
+        
+        def add_to_basket(product):
+            """Add product to basket."""
+            # Get product ID (could be 'id' or 'internal_id')
+            product_id = product.get('internal_id') or product.get('id')
+            
+            # Check if already in basket
+            for item in basket_items:
+                if item['product_id'] == product_id:
+                    QMessageBox.information(dialog, "Info", "Product already in basket")
+                    return
+            
+            # Add to basket
+            basket_items.append({
+                'product_id': product_id,
+                'stock_number': product.get('stock_number', ''),
+                'description': product.get('description', ''),
+                'quantity': 1.0,
+                'unit_price': 0.0
+            })
+            update_basket_table()
+        
+        def remove_from_basket(row):
+            """Remove item from basket."""
+            if 0 <= row < len(basket_items):
+                basket_items.pop(row)
+                update_basket_table()
+        
+        def update_basket_table():
+            """Update basket table display."""
+            basket_table.setRowCount(len(basket_items))
+            for row, item in enumerate(basket_items):
+                basket_table.setItem(row, 0, QTableWidgetItem(item['stock_number']))
+                basket_table.setItem(row, 1, QTableWidgetItem(item['description']))
+                
+                # Quantity spinbox
+                qty_spin = QDoubleSpinBox()
+                qty_spin.setRange(0.01, 999999)
+                qty_spin.setValue(item['quantity'])
+                qty_spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                qty_spin.valueChanged.connect(lambda val, r=row: update_basket_item(r, 'quantity', val))
+                basket_table.setCellWidget(row, 2, qty_spin)
+                
+                # Unit price spinbox
+                price_spin = QDoubleSpinBox()
+                price_spin.setRange(0, 999999)
+                price_spin.setPrefix("£")
+                price_spin.setValue(item['unit_price'])
+                price_spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                price_spin.valueChanged.connect(lambda val, r=row: update_basket_item(r, 'unit_price', val))
+                basket_table.setCellWidget(row, 3, price_spin)
+                
+                # Remove button
+                remove_btn = QPushButton("Remove")
+                remove_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                remove_btn.clicked.connect(lambda checked, r=row: remove_from_basket(r))
+                basket_table.setCellWidget(row, 4, remove_btn)
+            
+            basket_table.resizeColumnsToContents()
+        
+        def update_basket_item(row, field, value):
+            """Update basket item field."""
+            if 0 <= row < len(basket_items):
+                basket_items[row][field] = value
+        
+        # Connect search field
+        search_entry.textChanged.connect(filter_products)
+        
+        # Initial load
+        filter_products()
         
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        def handle_add():
-            if not stock_entry.text().strip():
-                QMessageBox.warning(dialog, "Error", "Stock number is required")
+        def handle_submit():
+            """Submit basket to invoice items table."""
+            if not basket_items:
+                QMessageBox.warning(dialog, "Error", "Basket is empty")
                 return
             
-            row = items_table.rowCount()
-            items_table.insertRow(row)
-            items_table.setItem(row, 0, QTableWidgetItem(stock_entry.text().strip()))
-            items_table.setItem(row, 1, QTableWidgetItem(desc_entry.text().strip()))
-            items_table.setItem(row, 2, QTableWidgetItem(str(qty_entry.value())))
-            items_table.setItem(row, 3, QTableWidgetItem(str(price_entry.value())))
-            items_table.setItem(row, 4, QTableWidgetItem(f"£{qty_entry.value() * price_entry.value():.2f}"))
+            # Validate all items have quantity and price
+            for item in basket_items:
+                if item['quantity'] <= 0:
+                    QMessageBox.warning(dialog, "Error", f"Quantity must be greater than zero for {item['stock_number']}")
+                    return
+                if item['unit_price'] < 0:
+                    QMessageBox.warning(dialog, "Error", f"Unit price cannot be negative for {item['stock_number']}")
+                    return
+            
+            # Add all items to invoice items table
+            for item in basket_items:
+                row = items_table.rowCount()
+                items_table.insertRow(row)
+                items_table.setItem(row, 0, QTableWidgetItem(item['stock_number']))
+                items_table.setItem(row, 1, QTableWidgetItem(item['description']))
+                items_table.setItem(row, 2, QTableWidgetItem(str(item['quantity'])))
+                items_table.setItem(row, 3, QTableWidgetItem(str(item['unit_price'])))
+                items_table.setItem(row, 4, QTableWidgetItem(f"£{item['quantity'] * item['unit_price']:.2f}"))
+            
+            # Trigger totals update in parent dialog
+            if update_totals_callback:
+                update_totals_callback()
             
             dialog.accept()
-            # Update totals in parent
-            parent_dialog.findChild(QLabel, "subtotal")  # Would need to store reference
         
-        add_btn = QPushButton("Add")
-        add_btn.setDefault(True)
-        add_btn.clicked.connect(handle_add)
-        button_layout.addWidget(add_btn)
+        submit_btn = QPushButton("Add to Invoice (Ctrl+Enter)")
+        submit_btn.setDefault(True)
+        submit_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        submit_btn.clicked.connect(handle_submit)
+        ctrl_enter = QShortcut(QKeySequence("Ctrl+Return"), dialog)
+        ctrl_enter.activated.connect(handle_submit)
+        button_layout.addWidget(submit_btn)
         
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = QPushButton("Cancel (Esc)")
+        cancel_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         cancel_btn.clicked.connect(dialog.reject)
         button_layout.addWidget(cancel_btn)
         
-        layout.addLayout(button_layout)
-        stock_entry.setFocus()
+        main_layout.addLayout(button_layout)
+        
+        # Set up tab order
+        dialog.setTabOrder(search_entry, products_table)
+        dialog.setTabOrder(products_table, basket_table)
+        dialog.setTabOrder(basket_table, submit_btn)
+        dialog.setTabOrder(submit_btn, cancel_btn)
+        
+        # Set focus to search field
+        search_entry.setFocus()
+        
         dialog.exec()
     
     def _edit_invoice_dialog(self, parent_dialog: QDialog, supplier_id: int, invoice_id: int):

@@ -2,7 +2,7 @@
 import sys
 from pathlib import Path
 from typing import Optional
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
+from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
 
@@ -147,6 +147,10 @@ class Application(QMainWindow):
         # F1: Show keyboard shortcuts help
         self.shortcut_help = QShortcut(QKeySequence("F1"), self)
         self.shortcut_help.activated.connect(self._show_shortcuts_help)
+        
+        # Ctrl+Q: Exit application
+        self.shortcut_quit = QShortcut(QKeySequence("Ctrl+Q"), self)
+        self.shortcut_quit.activated.connect(self._exit_application)
     
     def _navigate_to_dashboard(self):
         """Navigate to dashboard if logged in."""
@@ -219,6 +223,19 @@ class Application(QMainWindow):
             dialog = ShortcutsDialog(self)
             dialog.exec()
     
+    def _exit_application(self):
+        """Exit the application with confirmation."""
+        reply = QMessageBox.question(
+            self,
+            "Exit Application",
+            "Are you sure you want to exit?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            QApplication.instance().quit()
+    
     def on_login_success(self, username: str, user_id: int):
         """Handle successful login."""
         # Store current user ID
@@ -251,7 +268,8 @@ class Application(QMainWindow):
                 self.supplier_model, 
                 user_id,
                 self.invoice_controller,
-                self.payment_controller
+                self.payment_controller,
+                self.product_model
             )
             self.suppliers_controller.dashboard_requested.connect(self.on_back_to_dashboard)
             self.suppliers_controller.configuration_requested.connect(self.on_configuration)

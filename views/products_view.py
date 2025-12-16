@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QPushButton, QFrame, QTableWidget, QTableWidgetItem,
     QDialog, QLineEdit, QComboBox, QMessageBox, QHeaderView
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.navigation_panel import NavigationPanel
@@ -119,12 +119,23 @@ class ProductsView(QWidget):
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
-        # Tab order: Navigation panel -> Add Product -> Table
-        self.setTabOrder(self.nav_panel.logout_button, self.add_product_button)
-        self.setTabOrder(self.add_product_button, self.products_table)
+        # Tab order: Table -> Add Product -> Navigation panel
+        # This makes the table the first focusable element
+        self.setTabOrder(self.products_table, self.add_product_button)
+        self.setTabOrder(self.add_product_button, self.nav_panel.logout_button)
         
         # Arrow keys work automatically in QTableWidget
         self.products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    
+    def showEvent(self, event: QEvent):
+        """Handle show event - set focus to table if it has data."""
+        super().showEvent(event)
+        # Set focus to table if it has rows
+        if self.products_table.rowCount() > 0:
+            self.products_table.setFocus()
+            # Ensure first row is selected if nothing is selected
+            if not self.products_table.selectedItems():
+                self.products_table.selectRow(0)
     
     def _handle_dashboard(self):
         """Handle dashboard button click."""
@@ -280,10 +291,14 @@ class ProductsView(QWidget):
         ctrl_enter_shortcut.activated.connect(handle_save)
         button_layout.addWidget(save_btn)
         
-        delete_btn = QPushButton("Delete Product")
-        delete_btn.setMinimumWidth(120)
+        delete_btn = QPushButton("Delete Product (Ctrl+Shift+D)")
+        delete_btn.setMinimumWidth(220)
         delete_btn.setMinimumHeight(30)
         delete_btn.clicked.connect(handle_delete)
+        
+        # Ctrl+Shift+D shortcut for delete
+        delete_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), dialog)
+        delete_shortcut.activated.connect(handle_delete)
         button_layout.addWidget(delete_btn)
         
         cancel_btn = QPushButton("Cancel (Esc)")
@@ -344,39 +359,19 @@ class ProductsView(QWidget):
         desc_layout.addWidget(desc_entry, stretch=1)
         layout.addLayout(desc_layout)
         
-        # Type (dropdown) with add button
+        # Type (dropdown)
         type_layout = QHBoxLayout()
         type_label = QLabel("Type:")
         type_label.setMinimumWidth(150)
         type_label.setStyleSheet("font-size: 11px;")
         type_layout.addWidget(type_label)
         
-        # Container for combo and button
-        type_input_layout = QHBoxLayout()
-        type_input_layout.setSpacing(5)
-        type_input_layout.setContentsMargins(0, 0, 0, 0)
-        
         type_combo = QComboBox()
         type_combo.setStyleSheet("font-size: 11px;")
         type_combo.setEditable(True)  # Allow custom entry
         # Populate with available types
         self._populate_type_combo(type_combo)
-        type_input_layout.addWidget(type_combo, stretch=1)
-        
-        # Add button for new product type
-        add_type_btn = QPushButton("+")
-        add_type_btn.setMinimumWidth(35)
-        add_type_btn.setMaximumWidth(35)
-        add_type_btn.setMinimumHeight(30)
-        add_type_btn.setMaximumHeight(30)
-        add_type_btn.setToolTip("Add new product type")
-        add_type_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
-        add_type_btn.clicked.connect(lambda: self._handle_add_product_type_dialog(type_combo))
-        type_input_layout.addWidget(add_type_btn)
-        
-        type_widget = QWidget()
-        type_widget.setLayout(type_input_layout)
-        type_layout.addWidget(type_widget, stretch=1)
+        type_layout.addWidget(type_combo, stretch=1)
         
         layout.addLayout(type_layout)
         
@@ -400,6 +395,7 @@ class ProductsView(QWidget):
                 status_label.setText("Please enter a stock number")
                 return
             
+            # Type will be automatically created by controller if it doesn't exist
             self.create_requested.emit(product_stock_number, product_description, product_type)
             dialog.accept()
         
@@ -445,6 +441,13 @@ class ProductsView(QWidget):
         if len(products) > 0:
             header.resizeSection(1, 150)
             header.resizeSection(2, 300)
+        
+        # Auto-select first row and set focus to table if data exists
+        if len(products) > 0:
+            self.products_table.selectRow(0)
+            self.products_table.setFocus()
+            # Ensure the first row is visible
+            self.products_table.scrollToItem(self.products_table.item(0, 0))
     
     def show_success(self, message: str):
         """Display a success message."""
@@ -481,91 +484,4 @@ class ProductsView(QWidget):
                 combo.setCurrentIndex(index)
             else:
                 combo.setCurrentText(current_value)  # Custom value
-    
-    def _handle_add_product_type_dialog(self, type_combo: QComboBox):
-        """Handle add product type button click - opens dialog."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Add Product Type")
-        dialog.setModal(True)
-        dialog.setMinimumSize(400, 180)
-        dialog.resize(400, 180)
-        
-        # Add Escape key shortcut for cancel
-        esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
-        esc_shortcut.activated.connect(dialog.reject)
-        
-        layout = QVBoxLayout(dialog)
-        layout.setSpacing(20)
-        layout.setContentsMargins(30, 30, 30, 30)
-        
-        # Title
-        title_label = QLabel("Add New Product Type")
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
-        layout.addWidget(title_label)
-        
-        # Name input
-        name_layout = QHBoxLayout()
-        name_label = QLabel("Name:")
-        name_label.setMinimumWidth(100)
-        name_label.setStyleSheet("font-size: 12px;")
-        name_layout.addWidget(name_label)
-        name_entry = QLineEdit()
-        name_entry.setStyleSheet("font-size: 12px; padding: 5px;")
-        name_entry.setPlaceholderText("Enter product type name")
-        name_entry.setMinimumHeight(30)
-        name_layout.addWidget(name_entry, stretch=1)
-        layout.addLayout(name_layout)
-        
-        # Status label
-        status_label = QLabel("")
-        status_label.setStyleSheet("color: red; font-size: 10px;")
-        status_label.setMinimumHeight(15)
-        layout.addWidget(status_label)
-        
-        layout.addStretch()
-        
-        # Button frame
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        
-        def handle_save():
-            type_name = name_entry.text().strip()
-            
-            if not type_name:
-                status_label.setText("Please enter a product type name")
-                return
-            
-            # Emit signal to add product type
-            self.add_product_type_requested.emit(type_name)
-            # Refresh the combo box with new types (will be updated by controller)
-            # The controller will call refresh_types which updates available_types
-            # We'll refresh the combo after the dialog closes
-            dialog.accept()
-            # Refresh combo box after dialog closes
-            self._populate_type_combo(type_combo, type_name)
-        
-        save_btn = QPushButton("Save (Ctrl+Enter)")
-        save_btn.setMinimumWidth(140)
-        save_btn.setMinimumHeight(35)
-        save_btn.setDefault(True)
-        save_btn.clicked.connect(handle_save)
-        
-        # Ctrl+Enter shortcut for save
-        ctrl_enter_shortcut = QShortcut(QKeySequence("Ctrl+Return"), dialog)
-        ctrl_enter_shortcut.activated.connect(handle_save)
-        button_layout.addWidget(save_btn)
-        
-        cancel_btn = QPushButton("Cancel (Esc)")
-        cancel_btn.setMinimumWidth(120)
-        cancel_btn.setMinimumHeight(35)
-        cancel_btn.clicked.connect(dialog.reject)
-        button_layout.addWidget(cancel_btn)
-        
-        layout.addLayout(button_layout)
-        
-        # Set focus to name entry
-        name_entry.setFocus()
-        
-        # Show dialog
-        dialog.exec()
 

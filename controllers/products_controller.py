@@ -46,8 +46,40 @@ class ProductsController(QObject):
         self.refresh_products()
         self.refresh_types()
     
+    def _ensure_product_type_exists(self, type_name: str) -> bool:
+        """
+        Ensure a product type exists, creating it if necessary.
+        
+        Args:
+            type_name: The product type name to ensure exists
+            
+        Returns:
+            True if the type exists or was created successfully, False otherwise
+        """
+        if not type_name:
+            return True  # Empty type is allowed
+        
+        # Check if type already exists
+        existing_types = self.product_type_model.get_names(self.user_id)
+        if type_name in existing_types:
+            return True
+        
+        # Type doesn't exist, create it
+        success, message = self.product_type_model.create(type_name, self.user_id)
+        if success:
+            # Refresh types list so it's available for future operations
+            self.refresh_types()
+        # Don't show error dialog here - if creation fails, we'll let the product creation handle it
+        return success
+    
     def handle_create(self, stock_number: str, description: str, type: str):
         """Handle create product."""
+        # Ensure product type exists before creating product
+        if type and not self._ensure_product_type_exists(type):
+            # Type creation failed, but don't show error - product creation will handle it
+            # The type might already exist from a race condition
+            pass
+        
         success, message = self.product_model.create(stock_number, description, type, self.user_id)
         
         if success:
@@ -58,6 +90,12 @@ class ProductsController(QObject):
     
     def handle_update(self, product_id: int, stock_number: str, description: str, type: str):
         """Handle update product."""
+        # Ensure product type exists before updating product
+        if type and not self._ensure_product_type_exists(type):
+            # Type creation failed, but don't show error - product update will handle it
+            # The type might already exist from a race condition
+            pass
+        
         success, message = self.product_model.update(product_id, stock_number, description, type, self.user_id)
         
         if success:
