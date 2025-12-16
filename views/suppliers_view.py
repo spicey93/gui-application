@@ -331,9 +331,10 @@ class SuppliersView(QWidget):
                 self._edit_invoice_dialog(dialog, supplier_id, invoices_list[row]['id'])
         
         invoices_table = InvoicesTableWidget(handle_invoice_enter)
-        invoices_table.setColumnCount(5)
-        invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Total", "Outstanding", "Status"])
-        invoices_table.horizontalHeader().setStretchLastSection(True)
+        invoices_table.setColumnCount(6)
+        invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Total", "Outstanding", "Status", "Delete"])
+        invoices_table.horizontalHeader().setStretchLastSection(False)
+        invoices_table.setColumnWidth(5, 80)  # Delete column width
         invoices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         invoices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         invoices_table.setAlternatingRowColors(True)
@@ -350,6 +351,15 @@ class SuppliersView(QWidget):
                 invoices_table.setItem(row, 2, QTableWidgetItem(f"£{invoice['total']:.2f}"))
                 invoices_table.setItem(row, 3, QTableWidgetItem(f"£{outstanding:.2f}"))
                 invoices_table.setItem(row, 4, QTableWidgetItem(invoice['status']))
+                
+                # Delete button
+                delete_btn = QPushButton("Delete")
+                delete_btn.setMaximumWidth(70)
+                delete_btn.clicked.connect(
+                    lambda checked, inv_id=invoice_id, inv_num=invoice['invoice_number']: 
+                    self._delete_invoice_dialog(dialog, supplier_id, inv_id, inv_num)
+                )
+                invoices_table.setCellWidget(row, 5, delete_btn)
             
             # Double-click to edit invoice
             invoices_table.itemDoubleClicked.connect(
@@ -385,9 +395,10 @@ class SuppliersView(QWidget):
                 self._allocate_payment_dialog(dialog, supplier_id, payments_list[row]['id'])
         
         payments_table = PaymentsTableWidget(handle_payment_enter)
-        payments_table.setColumnCount(4)
-        payments_table.setHorizontalHeaderLabels(["Date", "Amount", "Reference", "Unallocated"])
-        payments_table.horizontalHeader().setStretchLastSection(True)
+        payments_table.setColumnCount(6)
+        payments_table.setHorizontalHeaderLabels(["Date", "Amount", "Method", "Reference", "Unallocated", "Delete"])
+        payments_table.horizontalHeader().setStretchLastSection(False)
+        payments_table.setColumnWidth(5, 80)  # Delete column width
         payments_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         payments_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         payments_table.setAlternatingRowColors(True)
@@ -401,8 +412,18 @@ class SuppliersView(QWidget):
                 unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
                 payments_table.setItem(row, 0, QTableWidgetItem(payment['payment_date']))
                 payments_table.setItem(row, 1, QTableWidgetItem(f"£{payment['amount']:.2f}"))
-                payments_table.setItem(row, 2, QTableWidgetItem(payment.get('reference', '')))
-                payments_table.setItem(row, 3, QTableWidgetItem(f"£{unallocated:.2f}"))
+                payments_table.setItem(row, 2, QTableWidgetItem(payment.get('payment_method', 'Cash')))
+                payments_table.setItem(row, 3, QTableWidgetItem(payment.get('reference', '')))
+                payments_table.setItem(row, 4, QTableWidgetItem(f"£{unallocated:.2f}"))
+                
+                # Delete button
+                delete_btn = QPushButton("Delete")
+                delete_btn.setMaximumWidth(70)
+                delete_btn.clicked.connect(
+                    lambda checked, pay_id=payment_id, pay_date=payment['payment_date'], pay_amt=payment['amount']: 
+                    self._delete_payment_dialog(dialog, supplier_id, pay_id, pay_date, pay_amt)
+                )
+                payments_table.setCellWidget(row, 5, delete_btn)
             
             # Double-click to allocate payment
             payments_table.itemDoubleClicked.connect(
@@ -511,6 +532,61 @@ class SuppliersView(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             dialog.accept()
             self.delete_requested.emit(supplier_id)
+    
+    def _delete_invoice_dialog(self, parent_dialog: QDialog, supplier_id: int, invoice_id: int, invoice_number: str):
+        """Handle delete invoice dialog."""
+        if not self.invoice_controller:
+            QMessageBox.warning(parent_dialog, "Error", "Invoice controller not available")
+            return
+        
+        reply = QMessageBox.question(
+            parent_dialog,
+            "Confirm Delete",
+            f"Are you sure you want to delete invoice '{invoice_number}'?\n\n"
+            "Note: Invoices with allocated payments cannot be deleted.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success, message = self.invoice_controller.delete_invoice(invoice_id)
+            if success:
+                QMessageBox.information(parent_dialog, "Success", message)
+                # Refresh the supplier details dialog
+                parent_dialog.accept()
+                # Reopen the dialog to show updated data
+                supplier_data = self.supplier_model.get_by_id(supplier_id, self.user_id)
+                if supplier_data:
+                    self._show_supplier_details(supplier_id, supplier_data['account_number'], supplier_data['name'])
+            else:
+                QMessageBox.critical(parent_dialog, "Error", message)
+    
+    def _delete_payment_dialog(self, parent_dialog: QDialog, supplier_id: int, payment_id: int, 
+                               payment_date: str, payment_amount: float):
+        """Handle delete payment dialog."""
+        if not self.payment_controller:
+            QMessageBox.warning(parent_dialog, "Error", "Payment controller not available")
+            return
+        
+        reply = QMessageBox.question(
+            parent_dialog,
+            "Confirm Delete",
+            f"Are you sure you want to delete payment of £{payment_amount:.2f} from {payment_date}?\n\n"
+            "This will also remove all payment allocations.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success, message = self.payment_controller.delete_payment(payment_id)
+            if success:
+                QMessageBox.information(parent_dialog, "Success", message)
+                # Refresh the supplier details dialog
+                parent_dialog.accept()
+                # Reopen the dialog to show updated data
+                supplier_data = self.supplier_model.get_by_id(supplier_id, self.user_id)
+                if supplier_data:
+                    self._show_supplier_details(supplier_id, supplier_data['account_number'], supplier_data['name'])
+            else:
+                QMessageBox.critical(parent_dialog, "Error", message)
     
     def add_supplier(self):
         """Show dialog for adding a new supplier."""
@@ -1148,15 +1224,16 @@ class SuppliersView(QWidget):
         ref_layout.addWidget(ref_entry, stretch=1)
         layout.addLayout(ref_layout)
         
-        # Notes
-        notes_layout = QHBoxLayout()
-        notes_label = QLabel("Notes:")
-        notes_label.setMinimumWidth(150)
-        notes_layout.addWidget(notes_label)
-        notes_entry = QTextEdit()
-        notes_entry.setMaximumHeight(100)
-        notes_layout.addWidget(notes_entry, stretch=1)
-        layout.addLayout(notes_layout)
+        # Payment Method
+        method_layout = QHBoxLayout()
+        method_label = QLabel("Payment Method:")
+        method_label.setMinimumWidth(150)
+        method_layout.addWidget(method_label)
+        method_combo = QComboBox()
+        method_combo.addItems(["Cash", "Card", "Cheque", "BACS"])
+        method_combo.setCurrentIndex(0)  # Default to Cash
+        method_layout.addWidget(method_combo, stretch=1)
+        layout.addLayout(method_layout)
         
         layout.addStretch()
         
@@ -1170,18 +1247,30 @@ class SuppliersView(QWidget):
                 return
             
             payment_date = date_entry.date().toString("yyyy-MM-dd")
+            payment_method = method_combo.currentText()
             success, message, payment_id = self.payment_controller.create_payment(
                 supplier_id, payment_date, amount_entry.value(),
-                ref_entry.text().strip(), notes_entry.toPlainText().strip()
+                ref_entry.text().strip(), payment_method
             )
             
             if not success:
                 QMessageBox.critical(dialog, "Error", message)
                 return
             
-            QMessageBox.information(dialog, "Success", "Payment created successfully")
             dialog.accept()
-            parent_dialog.accept()  # Close parent to refresh
+            
+            # Check if supplier has outstanding invoices and show allocation dialog
+            outstanding_invoices = self.payment_controller.get_outstanding_invoices(supplier_id)
+            if outstanding_invoices and payment_id:
+                # Show allocation dialog (it will handle closing parent_dialog on success)
+                # Pass a callback to close parent_dialog after successful allocation
+                def allocation_callback():
+                    parent_dialog.accept()  # Close parent to refresh
+                self._allocate_payment_dialog(parent_dialog, supplier_id, payment_id, allocation_callback)
+            else:
+                # No outstanding invoices, show success and close parent to refresh
+                QMessageBox.information(parent_dialog, "Success", "Payment created successfully")
+                parent_dialog.accept()
         
         save_btn = QPushButton("Save (Ctrl+Enter)")
         save_btn.setDefault(True)
@@ -1198,8 +1287,17 @@ class SuppliersView(QWidget):
         date_entry.setFocus()
         dialog.exec()
     
-    def _allocate_payment_dialog(self, parent_dialog: QDialog, supplier_id: int, payment_id: int):
-        """Allocate payment to invoices dialog."""
+    def _allocate_payment_dialog(self, parent_dialog: QDialog, supplier_id: int, payment_id: int, 
+                                 on_success_callback: Optional[Callable] = None):
+        """
+        Allocate payment to invoices dialog.
+        
+        Args:
+            parent_dialog: Parent dialog
+            supplier_id: Supplier ID
+            payment_id: Payment ID
+            on_success_callback: Optional callback to call after successful allocation
+        """
         if not self.payment_controller:
             return
         
@@ -1275,7 +1373,10 @@ class SuppliersView(QWidget):
             
             QMessageBox.information(dialog, "Success", "Payment allocated successfully")
             dialog.accept()
-            parent_dialog.accept()
+            if on_success_callback:
+                on_success_callback()
+            else:
+                parent_dialog.accept()
         
         allocate_btn = QPushButton("Allocate (Ctrl+Enter)")
         allocate_btn.setDefault(True)

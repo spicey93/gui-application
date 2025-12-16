@@ -32,7 +32,7 @@ class PaymentController(QObject):
         self.user_id = user_id
     
     def create_payment(self, supplier_id: int, payment_date: str, amount: float,
-                      reference: str, notes: str) -> tuple[bool, str, Optional[int]]:
+                      reference: str, payment_method: str) -> tuple[bool, str, Optional[int]]:
         """
         Create a new payment.
         
@@ -41,7 +41,7 @@ class PaymentController(QObject):
             payment_date: Payment date (YYYY-MM-DD)
             amount: Payment amount
             reference: Payment reference
-            notes: Payment notes
+            payment_method: Payment method (Cash, Card, Cheque, BACS)
         
         Returns:
             Tuple of (success: bool, message: str, payment_id: Optional[int])
@@ -56,7 +56,7 @@ class PaymentController(QObject):
         internal_supplier_id = supplier_data['internal_id']
         
         success, message, payment_id = self.payment_model.create(
-            internal_supplier_id, payment_date, amount, reference, notes, self.user_id
+            internal_supplier_id, payment_date, amount, reference, payment_method, self.user_id
         )
         
         if success:

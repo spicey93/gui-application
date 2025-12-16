@@ -41,17 +41,31 @@ class Payment:
                         payment_date DATE NOT NULL,
                         amount REAL NOT NULL,
                         reference TEXT,
-                        notes TEXT,
+                        payment_method TEXT NOT NULL DEFAULT 'Cash',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                         FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
                     )
                 """)
+            else:
+                # Migrate existing table: add payment_method, remove notes
+                # Check if payment_method column exists
+                cursor.execute("PRAGMA table_info(payments)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                if 'payment_method' not in columns:
+                    cursor.execute("""
+                        ALTER TABLE payments 
+                        ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'
+                    """)
+                
+                # Note: We don't remove the notes column to preserve existing data
+                # but it won't be used in new code
             
             conn.commit()
     
     def create(self, supplier_id: int, payment_date: str, amount: float,
-               reference: str, notes: str, user_id: int) -> Tuple[bool, str, Optional[int]]:
+               reference: str, payment_method: str, user_id: int) -> Tuple[bool, str, Optional[int]]:
         """
         Create a new payment.
         
@@ -60,7 +74,7 @@ class Payment:
             payment_date: Payment date (YYYY-MM-DD format)
             amount: Payment amount
             reference: Payment reference (optional)
-            notes: Payment notes (optional)
+            payment_method: Payment method (Cash, Card, Cheque, BACS)
             user_id: ID of the user creating the payment
         
         Returns:
@@ -75,17 +89,19 @@ class Payment:
         if not user_id or not supplier_id:
             return False, "User ID and supplier ID are required", None
         
+        if payment_method not in ['Cash', 'Card', 'Cheque', 'BACS']:
+            return False, "Payment method must be one of: Cash, Card, Cheque, BACS", None
+        
         reference = reference.strip() if reference else ""
-        notes = notes.strip() if notes else ""
         
         try:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    INSERT INTO payments (user_id, supplier_id, payment_date, amount, reference, notes)
+                    INSERT INTO payments (user_id, supplier_id, payment_date, amount, reference, payment_method)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (user_id, supplier_id, payment_date, amount, reference, notes))
+                """, (user_id, supplier_id, payment_date, amount, reference, payment_method))
                 
                 payment_id = cursor.lastrowid
                 conn.commit()
@@ -111,14 +127,14 @@ class Payment:
                 
                 if supplier_id:
                     cursor.execute("""
-                        SELECT id, supplier_id, payment_date, amount, reference, notes, created_at
+                        SELECT id, supplier_id, payment_date, amount, reference, payment_method, created_at
                         FROM payments 
                         WHERE user_id = ? AND supplier_id = ?
                         ORDER BY payment_date DESC, id DESC
                     """, (user_id, supplier_id))
                 else:
                     cursor.execute("""
-                        SELECT id, supplier_id, payment_date, amount, reference, notes, created_at
+                        SELECT id, supplier_id, payment_date, amount, reference, payment_method, created_at
                         FROM payments 
                         WHERE user_id = ?
                         ORDER BY payment_date DESC, id DESC
@@ -145,7 +161,7 @@ class Payment:
                 conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT id, supplier_id, payment_date, amount, reference, notes, created_at
+                    SELECT id, supplier_id, payment_date, amount, reference, payment_method, created_at
                     FROM payments 
                     WHERE id = ? AND user_id = ?
                 """, (payment_id, user_id))
