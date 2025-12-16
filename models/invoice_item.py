@@ -91,6 +91,15 @@ class InvoiceItem:
                 item_id = cursor.lastrowid
                 conn.commit()
                 
+                # Update product stock if product_id exists
+                if product_id is not None:
+                    from models.product import Product
+                    product_model = Product(self.db_path)
+                    stock_success, stock_message = product_model.update_stock(product_id, quantity)
+                    if not stock_success:
+                        # Log error but don't fail the item creation
+                        pass
+                
                 # Recalculate invoice totals
                 from models.invoice import Invoice
                 invoice_model = Invoice(self.db_path)
@@ -209,6 +218,15 @@ class InvoiceItem:
                 
                 invoice_id = result[0]
                 
+                # Get product_id and quantity before deleting (for stock reversal)
+                cursor.execute("SELECT product_id, quantity FROM invoice_items WHERE id = ?", (item_id,))
+                item_result = cursor.fetchone()
+                product_id = None
+                quantity = 0.0
+                if item_result:
+                    product_id = item_result[0]
+                    quantity = item_result[1]
+                
                 # Delete item
                 cursor.execute("DELETE FROM invoice_items WHERE id = ?", (item_id,))
                 
@@ -216,6 +234,15 @@ class InvoiceItem:
                     return False, "Item not found"
                 
                 conn.commit()
+                
+                # Reverse product stock if product_id exists
+                if product_id is not None:
+                    from models.product import Product
+                    product_model = Product(self.db_path)
+                    stock_success, stock_message = product_model.update_stock(product_id, -quantity)
+                    if not stock_success:
+                        # Log error but don't fail the item deletion
+                        pass
                 
                 # Recalculate invoice totals
                 cursor.execute("SELECT user_id FROM invoices WHERE id = ?", (invoice_id,))

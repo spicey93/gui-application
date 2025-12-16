@@ -41,6 +41,7 @@ class Product:
                         stock_number TEXT NOT NULL,
                         description TEXT,
                         type TEXT,
+                        stock_quantity REAL NOT NULL DEFAULT 0.0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                         UNIQUE(user_id, user_product_id)
@@ -97,6 +98,7 @@ class Product:
                             stock_number TEXT NOT NULL,
                             description TEXT,
                             type TEXT,
+                            stock_quantity REAL NOT NULL DEFAULT 0.0,
                             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                             UNIQUE(user_id, user_product_id)
@@ -131,8 +133,8 @@ class Product:
                                 old_user_product_id = old_id
                             
                             cursor.execute("""
-                                INSERT INTO products (id, user_id, user_product_id, stock_number, description, type, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO products (id, user_id, user_product_id, stock_number, description, type, stock_quantity, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, 0.0, ?)
                             """, (old_id, old_user_id, old_user_product_id, old_name or "", old_description or "", new_type, old_created_at))
                         except Exception:
                             # Skip rows that can't be migrated
@@ -180,6 +182,9 @@ class Product:
                     if 'type' not in column_names:
                         cursor.execute("ALTER TABLE products ADD COLUMN type TEXT")
                     
+                    if 'stock_quantity' not in column_names:
+                        cursor.execute("ALTER TABLE products ADD COLUMN stock_quantity REAL NOT NULL DEFAULT 0.0")
+                    
                     # Remove old name column if it exists and stock_number exists
                     if 'name' in column_names and 'stock_number' in column_names:
                         try:
@@ -204,6 +209,7 @@ class Product:
                                     stock_number TEXT NOT NULL,
                                     description TEXT,
                                     type TEXT,
+                                    stock_quantity REAL NOT NULL DEFAULT 0.0,
                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                                     UNIQUE(user_id, user_product_id)
@@ -226,8 +232,8 @@ class Product:
                                 
                                 if len(new_row) >= 7:
                                     cursor.execute("""
-                                        INSERT INTO products (id, user_id, user_product_id, stock_number, description, type, created_at)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                        INSERT INTO products (id, user_id, user_product_id, stock_number, description, type, stock_quantity, created_at)
+                                        VALUES (?, ?, ?, ?, ?, ?, 0.0, ?)
                                     """, tuple(new_row[:7]))
                         except Exception:
                             # If migration fails, at least ensure stock_number exists
@@ -293,7 +299,7 @@ class Product:
                 next_user_product_id = cursor.fetchone()[0]
                 
                 cursor.execute(
-                    "INSERT INTO products (stock_number, description, type, user_id, user_product_id) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO products (stock_number, description, type, user_id, user_product_id, stock_quantity) VALUES (?, ?, ?, ?, ?, 0.0)",
                     (stock_number, description, type, user_id, next_user_product_id)
                 )
                 conn.commit()
@@ -314,7 +320,7 @@ class Product:
                         """, (user_id,))
                         next_user_product_id = cursor.fetchone()[0]
                         cursor.execute(
-                            "INSERT INTO products (stock_number, description, type, user_id, user_product_id) VALUES (?, ?, ?, ?, ?)",
+                            "INSERT INTO products (stock_number, description, type, user_id, user_product_id, stock_quantity) VALUES (?, ?, ?, ?, ?, 0.0)",
                             (stock_number, description, type, user_id, next_user_product_id)
                         )
                         conn.commit()
@@ -346,6 +352,7 @@ class Product:
                     stock_number, 
                     description,
                     type,
+                    COALESCE(stock_quantity, 0.0) as stock_quantity,
                     created_at 
                 FROM products 
                 WHERE user_id = ? 
@@ -379,6 +386,7 @@ class Product:
                     stock_number, 
                     description,
                     type,
+                    COALESCE(stock_quantity, 0.0) as stock_quantity,
                     created_at 
                 FROM products 
                 WHERE user_product_id = ? AND user_id = ?
@@ -483,4 +491,72 @@ class Product:
             return True, "Product deleted successfully"
         except Exception as e:
             return False, f"Error deleting product: {str(e)}"
+    
+    def update_stock(self, internal_product_id: int, quantity_delta: float) -> Tuple[bool, str]:
+        """
+        Update product stock quantity by adding or subtracting.
+        
+        Args:
+            internal_product_id: Internal database product ID (not user_product_id)
+            quantity_delta: Quantity to add (positive) or subtract (negative)
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Check if product exists
+                cursor.execute("SELECT id, stock_quantity FROM products WHERE id = ?", (internal_product_id,))
+                result = cursor.fetchone()
+                
+                if not result:
+                    return False, "Product not found"
+                
+                current_stock = result[1] or 0.0
+                new_stock = current_stock + quantity_delta
+                
+                # Update stock
+                cursor.execute("""
+                    UPDATE products 
+                    SET stock_quantity = ? 
+                    WHERE id = ?
+                """, (new_stock, internal_product_id))
+                
+                conn.commit()
+            return True, "Stock updated successfully"
+        except Exception as e:
+            return False, f"Error updating stock: {str(e)}"
+    
+    def get_by_internal_id(self, internal_product_id: int) -> Optional[Dict[str, any]]:
+        """
+        Get a product by internal database ID.
+        
+        Args:
+            internal_product_id: Internal database product ID
+        
+        Returns:
+            Product dictionary or None if not found
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 
+                        id as internal_id,
+                        COALESCE(user_product_id, id) as id,
+                        stock_number, 
+                        description,
+                        type,
+                        COALESCE(stock_quantity, 0.0) as stock_quantity,
+                        created_at 
+                    FROM products 
+                    WHERE id = ?
+                """, (internal_product_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception:
+            return None
 

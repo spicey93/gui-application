@@ -200,10 +200,13 @@ class Invoice:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
                 cursor = conn.cursor()
                 
-                # Check if invoice exists and belongs to user
-                cursor.execute("SELECT id FROM invoices WHERE id = ? AND user_id = ?", (invoice_id, user_id))
-                if not cursor.fetchone():
+                # Check if invoice exists and belongs to user, and get current status
+                cursor.execute("SELECT id, status FROM invoices WHERE id = ? AND user_id = ?", (invoice_id, user_id))
+                result = cursor.fetchone()
+                if not result:
                     return False, "Invoice not found"
+                
+                old_status = result[1]
                 
                 cursor.execute("""
                     UPDATE invoices 
@@ -212,6 +215,11 @@ class Invoice:
                 """, (invoice_number, invoice_date, vat_rate, status, invoice_id, user_id))
                 
                 conn.commit()
+                
+                # If status changed to 'cancelled', reverse stock for all items
+                if old_status != 'cancelled' and status == 'cancelled':
+                    self._reverse_invoice_stock(invoice_id)
+            
             return True, "Invoice updated successfully"
         except sqlite3.IntegrityError:
             return False, "Invoice number already exists for this supplier"
@@ -329,6 +337,9 @@ class Invoice:
                 if allocation_count > 0:
                     return False, "Cannot delete invoice: payments have been allocated to this invoice"
                 
+                # Reverse stock for all items before deletion
+                self._reverse_invoice_stock(invoice_id)
+                
                 # Delete invoice items first (CASCADE should handle this, but explicit is safer)
                 cursor.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
                 
@@ -342,4 +353,36 @@ class Invoice:
             return True, "Invoice deleted successfully"
         except Exception as e:
             return False, f"Error deleting invoice: {str(e)}"
+    
+    def _reverse_invoice_stock(self, invoice_id: int) -> None:
+        """
+        Reverse stock for all items in an invoice (subtract quantities).
+        
+        Args:
+            invoice_id: Invoice ID
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Get all items with product_id
+                cursor.execute("""
+                    SELECT product_id, quantity 
+                    FROM invoice_items 
+                    WHERE invoice_id = ? AND product_id IS NOT NULL
+                """, (invoice_id,))
+                
+                items = cursor.fetchall()
+                
+                if items:
+                    from models.product import Product
+                    product_model = Product(self.db_path)
+                    
+                    for product_id, quantity in items:
+                        if product_id is not None:
+                            # Subtract quantity (reverse the stock)
+                            product_model.update_stock(product_id, -quantity)
+        except Exception:
+            # Silently fail - stock reversal is not critical for invoice operations
+            pass
 

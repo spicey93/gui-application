@@ -13,6 +13,7 @@ class DashboardView(QWidget):
     logout_requested = Signal()
     suppliers_requested = Signal()
     products_requested = Signal()
+    inventory_requested = Signal()
     configuration_requested = Signal()
     
     def __init__(self):
@@ -33,6 +34,7 @@ class DashboardView(QWidget):
         self.nav_panel.dashboard_requested.connect(self._handle_dashboard)
         self.nav_panel.suppliers_requested.connect(self._handle_suppliers)
         self.nav_panel.products_requested.connect(self._handle_products)
+        self.nav_panel.inventory_requested.connect(self._handle_inventory)
         self.nav_panel.configuration_requested.connect(self._handle_configuration)
         self.nav_panel.logout_requested.connect(self._handle_logout)
         
@@ -97,6 +99,10 @@ class DashboardView(QWidget):
     def _handle_products(self):
         """Handle products button click."""
         self.products_requested.emit()
+    
+    def _handle_inventory(self):
+        """Handle inventory button click."""
+        self.inventory_requested.emit()
     
     def _handle_configuration(self):
         """Handle configuration button click."""

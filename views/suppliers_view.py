@@ -328,7 +328,7 @@ class SuppliersView(QWidget):
         
         def handle_invoice_enter(row):
             if row < len(invoices_list):
-                self._edit_invoice_dialog(dialog, supplier_id, invoices_list[row]['id'])
+                self._view_invoice_dialog(dialog, supplier_id, invoices_list[row]['id'])
         
         invoices_table = InvoicesTableWidget(handle_invoice_enter)
         invoices_table.setColumnCount(6)
@@ -361,9 +361,9 @@ class SuppliersView(QWidget):
                 )
                 invoices_table.setCellWidget(row, 5, delete_btn)
             
-            # Double-click to edit invoice
+            # Double-click to view invoice
             invoices_table.itemDoubleClicked.connect(
-                lambda item: self._edit_invoice_dialog(dialog, supplier_id, invoices_list[item.row()]['id'])
+                lambda item: self._view_invoice_dialog(dialog, supplier_id, invoices_list[item.row()]['id'])
             )
         
         invoices_table.resizeColumnsToContents()
@@ -554,7 +554,7 @@ class SuppliersView(QWidget):
                 # Refresh the supplier details dialog
                 parent_dialog.accept()
                 # Reopen the dialog to show updated data
-                supplier_data = self.supplier_model.get_by_id(supplier_id, self.user_id)
+                supplier_data = self.supplier_model.get_by_id(supplier_id, self._current_user_id)
                 if supplier_data:
                     self._show_supplier_details(supplier_id, supplier_data['account_number'], supplier_data['name'])
             else:
@@ -582,7 +582,7 @@ class SuppliersView(QWidget):
                 # Refresh the supplier details dialog
                 parent_dialog.accept()
                 # Reopen the dialog to show updated data
-                supplier_data = self.supplier_model.get_by_id(supplier_id, self.user_id)
+                supplier_data = self.supplier_model.get_by_id(supplier_id, self._current_user_id)
                 if supplier_data:
                     self._show_supplier_details(supplier_id, supplier_data['account_number'], supplier_data['name'])
             else:
@@ -1166,6 +1166,154 @@ class SuppliersView(QWidget):
         
         # Set focus to search field
         search_entry.setFocus()
+        
+        dialog.exec()
+    
+    def _view_invoice_dialog(self, parent_dialog: QDialog, supplier_id: int, invoice_id: int):
+        """View invoice dialog - displays invoice details in read-only format."""
+        if not self.invoice_controller:
+            QMessageBox.warning(self, "Error", "Invoice controller not available")
+            return
+        
+        # Get invoice details
+        invoice = self.invoice_controller.get_invoice(invoice_id)
+        if not invoice:
+            QMessageBox.warning(self, "Error", "Invoice not found")
+            return
+        
+        # Get invoice items
+        invoice_items = self.invoice_controller.get_invoice_items(invoice_id)
+        
+        # Get outstanding balance
+        outstanding = self.invoice_controller.get_invoice_outstanding_balance(invoice_id)
+        
+        dialog = QDialog(parent_dialog)
+        dialog.setWindowTitle(f"Invoice {invoice['invoice_number']}")
+        dialog.setModal(True)
+        dialog.setMinimumSize(800, 600)
+        dialog.resize(800, 600)
+        
+        esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
+        esc_shortcut.activated.connect(dialog.reject)
+        
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Invoice header
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(10)
+        
+        # Title
+        title_label = QLabel(f"Invoice {invoice['invoice_number']}")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        header_layout.addWidget(title_label)
+        
+        # Invoice Number (read-only)
+        inv_num_layout = QHBoxLayout()
+        inv_num_label = QLabel("Invoice Number:")
+        inv_num_label.setMinimumWidth(150)
+        inv_num_label.setStyleSheet("font-weight: bold;")
+        inv_num_layout.addWidget(inv_num_label)
+        inv_num_value = QLabel(invoice['invoice_number'])
+        inv_num_layout.addWidget(inv_num_value, stretch=1)
+        header_layout.addLayout(inv_num_layout)
+        
+        # Invoice Date (read-only)
+        date_layout = QHBoxLayout()
+        date_label = QLabel("Invoice Date:")
+        date_label.setMinimumWidth(150)
+        date_label.setStyleSheet("font-weight: bold;")
+        date_layout.addWidget(date_label)
+        date_value = QLabel(invoice['invoice_date'])
+        date_layout.addWidget(date_value, stretch=1)
+        header_layout.addLayout(date_layout)
+        
+        # VAT Rate (read-only)
+        vat_layout = QHBoxLayout()
+        vat_label = QLabel("VAT Rate (%):")
+        vat_label.setMinimumWidth(150)
+        vat_label.setStyleSheet("font-weight: bold;")
+        vat_layout.addWidget(vat_label)
+        vat_value = QLabel(f"{invoice['vat_rate']:.2f}%")
+        vat_layout.addWidget(vat_value, stretch=1)
+        header_layout.addLayout(vat_layout)
+        
+        # Status (read-only)
+        status_layout = QHBoxLayout()
+        status_label = QLabel("Status:")
+        status_label.setMinimumWidth(150)
+        status_label.setStyleSheet("font-weight: bold;")
+        status_layout.addWidget(status_label)
+        status_value = QLabel(invoice['status'])
+        status_layout.addWidget(status_value, stretch=1)
+        header_layout.addLayout(status_layout)
+        
+        layout.addLayout(header_layout)
+        
+        # Items table
+        items_label = QLabel("Items:")
+        items_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        layout.addWidget(items_label)
+        
+        items_table = QTableWidget()
+        items_table.setColumnCount(5)
+        items_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "Line Total"])
+        items_table.horizontalHeader().setStretchLastSection(True)
+        items_table.setAlternatingRowColors(True)
+        items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        items_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        items_table.setMinimumHeight(200)
+        
+        # Load items
+        if invoice_items:
+            items_table.setRowCount(len(invoice_items))
+            for row, item in enumerate(invoice_items):
+                items_table.setItem(row, 0, QTableWidgetItem(item.get('stock_number', '')))
+                items_table.setItem(row, 1, QTableWidgetItem(item.get('description', '')))
+                items_table.setItem(row, 2, QTableWidgetItem(str(item.get('quantity', 0))))
+                items_table.setItem(row, 3, QTableWidgetItem(f"£{item.get('unit_price', 0):.2f}"))
+                line_total = item.get('quantity', 0) * item.get('unit_price', 0)
+                items_table.setItem(row, 4, QTableWidgetItem(f"£{line_total:.2f}"))
+        
+        items_table.resizeColumnsToContents()
+        layout.addWidget(items_table)
+        
+        # Totals
+        totals_layout = QVBoxLayout()
+        totals_layout.setSpacing(5)
+        
+        subtotal_label = QLabel(f"Subtotal: £{invoice.get('subtotal', 0):.2f}")
+        subtotal_label.setStyleSheet("font-size: 12px;")
+        totals_layout.addWidget(subtotal_label)
+        
+        vat_amount_label = QLabel(f"VAT: £{invoice.get('vat_amount', 0):.2f}")
+        vat_amount_label.setStyleSheet("font-size: 12px;")
+        totals_layout.addWidget(vat_amount_label)
+        
+        total_label = QLabel(f"Total: £{invoice.get('total', 0):.2f}")
+        total_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        totals_layout.addWidget(total_label)
+        
+        outstanding_label = QLabel(f"Outstanding: £{outstanding:.2f}")
+        outstanding_label.setStyleSheet("font-size: 12px; color: #d32f2f;")
+        totals_layout.addWidget(outstanding_label)
+        
+        layout.addLayout(totals_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        close_btn = QPushButton("Close (Esc)")
+        close_btn.setMinimumWidth(140)
+        close_btn.setMinimumHeight(30)
+        close_btn.setDefault(True)
+        close_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        close_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(close_btn)
+        
+        layout.addLayout(button_layout)
         
         dialog.exec()
     

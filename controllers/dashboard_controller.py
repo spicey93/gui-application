@@ -13,6 +13,7 @@ class DashboardController(QObject):
     logout_requested = Signal()
     suppliers_requested = Signal()
     products_requested = Signal()
+    inventory_requested = Signal()
     configuration_requested = Signal()
     
     def __init__(self, dashboard_view: "DashboardView"):
@@ -24,6 +25,7 @@ class DashboardController(QObject):
         self.dashboard_view.logout_requested.connect(self.handle_logout)
         self.dashboard_view.suppliers_requested.connect(self.handle_suppliers)
         self.dashboard_view.products_requested.connect(self.handle_products)
+        self.dashboard_view.inventory_requested.connect(self.handle_inventory)
         self.dashboard_view.configuration_requested.connect(self.handle_configuration)
     
     def handle_logout(self):
@@ -37,6 +39,10 @@ class DashboardController(QObject):
     def handle_products(self):
         """Handle products navigation."""
         self.products_requested.emit()
+    
+    def handle_inventory(self):
+        """Handle inventory navigation."""
+        self.inventory_requested.emit()
     
     def handle_configuration(self):
         """Handle configuration navigation."""

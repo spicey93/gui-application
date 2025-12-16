@@ -10,6 +10,7 @@ class NavigationPanel(QFrame):
     dashboard_requested = Signal()
     suppliers_requested = Signal()
     products_requested = Signal()
+    inventory_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -64,6 +65,13 @@ class NavigationPanel(QFrame):
         self.products_button.clicked.connect(self._handle_products)
         nav_layout.addWidget(self.products_button)
         
+        # Inventory menu item
+        self.inventory_button = QPushButton("Inventory (Ctrl+I)")
+        self.inventory_button.setObjectName("navButton")
+        self.inventory_button.setMinimumHeight(30)
+        self.inventory_button.clicked.connect(self._handle_inventory)
+        nav_layout.addWidget(self.inventory_button)
+        
         # Configuration menu item
         self.config_button = QPushButton("Configuration (Ctrl+O)")
         self.config_button.setObjectName("navButton")
@@ -95,16 +103,18 @@ class NavigationPanel(QFrame):
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
-        # Tab order: Dashboard -> Suppliers -> Products -> Configuration -> Logout
+        # Tab order: Dashboard -> Suppliers -> Products -> Inventory -> Configuration -> Logout
         self.setTabOrder(self.dashboard_button, self.suppliers_button)
         self.setTabOrder(self.suppliers_button, self.products_button)
-        self.setTabOrder(self.products_button, self.config_button)
+        self.setTabOrder(self.products_button, self.inventory_button)
+        self.setTabOrder(self.inventory_button, self.config_button)
         self.setTabOrder(self.config_button, self.logout_button)
         
         # Arrow keys for navigation panel
         self.dashboard_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.suppliers_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.products_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.inventory_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.config_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.logout_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     
@@ -123,6 +133,11 @@ class NavigationPanel(QFrame):
         if self.current_view != "products":
             self.products_requested.emit()
     
+    def _handle_inventory(self):
+        """Handle inventory button click."""
+        if self.current_view != "inventory":
+            self.inventory_requested.emit()
+    
     def _handle_configuration(self):
         """Handle configuration button click."""
         if self.current_view != "configuration":
@@ -137,7 +152,7 @@ class NavigationPanel(QFrame):
         Update the current view indicator.
         
         Args:
-            view_name: The current view name (dashboard, suppliers, products, configuration)
+            view_name: The current view name (dashboard, suppliers, products, inventory, configuration)
         """
         self.current_view = view_name
         self._update_highlighting()
@@ -149,6 +164,7 @@ class NavigationPanel(QFrame):
             "dashboard": self.dashboard_button,
             "suppliers": self.suppliers_button,
             "products": self.products_button,
+            "inventory": self.inventory_button,
             "configuration": self.config_button
         }
         

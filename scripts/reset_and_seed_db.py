@@ -174,6 +174,7 @@ def seed_database(user_model: User, supplier_model: Supplier,
                     created_invoices.append((invoice_id, inv_num))
                     
                     # Add items to invoice
+                    # Note: Stock quantities are automatically updated when invoice items are created
                     if products:
                         # Add 2-3 items per invoice
                         items_to_add = min(3, len(products))
@@ -191,7 +192,7 @@ def seed_database(user_model: User, supplier_model: Supplier,
                                 unit_price
                             )
                             if success:
-                                print(f"      ✓ Added item: {product['stock_number']}")
+                                print(f"      ✓ Added item: {product['stock_number']} (qty: {qty}) - stock updated automatically")
                     
                     # Recalculate totals
                     invoice_model.calculate_totals(invoice_id, user_id)
@@ -201,17 +202,19 @@ def seed_database(user_model: User, supplier_model: Supplier,
             # Create payments
             if created_invoices:
                 payments_data = [
-                    ("2024-01-20", 500.0, "CHQ-001", "Payment for invoice INV-2024-001"),
-                    ("2024-02-15", 300.0, "CHQ-002", "Partial payment"),
+                    ("2024-01-20", 500.0, "CHQ-001", "Cheque", "Payment for invoice INV-2024-001"),
+                    ("2024-02-15", 300.0, "CHQ-002", "Cheque", "Partial payment"),
                 ]
                 
                 created_payments = []
-                for pay_date, amount, ref, notes in payments_data:
+                for pay_date, amount, ref, payment_method, notes in payments_data:
+                    # Combine reference and notes for the reference field
+                    reference = f"{ref} - {notes}" if notes else ref
                     success, message, payment_id = payment_model.create(
-                        supplier_internal_id, pay_date, amount, ref, notes, user_id
+                        supplier_internal_id, pay_date, amount, reference, payment_method, user_id
                     )
                     if success:
-                        print(f"    ✓ Created payment: {ref} - £{amount:.2f}")
+                        print(f"    ✓ Created payment: {ref} - £{amount:.2f} ({payment_method})")
                         created_payments.append((payment_id, amount))
                     else:
                         print(f"    ✗ Failed to create payment {ref}: {message}")

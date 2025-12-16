@@ -18,12 +18,14 @@ from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from views.suppliers_view import SuppliersView
 from views.products_view import ProductsView
+from views.inventory_view import InventoryView
 from views.configuration_view import ConfigurationView
 from views.shortcuts_dialog import ShortcutsDialog
 from controllers.login_controller import LoginController
 from controllers.dashboard_controller import DashboardController
 from controllers.suppliers_controller import SuppliersController
 from controllers.products_controller import ProductsController
+from controllers.inventory_controller import InventoryController
 from controllers.configuration_controller import ConfigurationController
 from controllers.invoice_controller import InvoiceController
 from controllers.payment_controller import PaymentController
@@ -66,6 +68,7 @@ class Application(QMainWindow):
         self.dashboard_view = DashboardView()
         self.suppliers_view = SuppliersView()
         self.products_view = ProductsView()
+        self.inventory_view = InventoryView()
         self.configuration_view = ConfigurationView()
         
         # Add views to stacked widget
@@ -73,6 +76,7 @@ class Application(QMainWindow):
         self.dashboard_index = self.stacked_widget.addWidget(self.dashboard_view)
         self.suppliers_index = self.stacked_widget.addWidget(self.suppliers_view)
         self.products_index = self.stacked_widget.addWidget(self.products_view)
+        self.inventory_index = self.stacked_widget.addWidget(self.inventory_view)
         self.configuration_index = self.stacked_widget.addWidget(self.configuration_view)
         
         # Show login view initially
@@ -83,6 +87,7 @@ class Application(QMainWindow):
         self.dashboard_controller = DashboardController(self.dashboard_view)
         self.suppliers_controller = None
         self.products_controller = None
+        self.inventory_controller = None
         self.configuration_controller = None
         self.invoice_controller = None
         self.payment_controller = None
@@ -92,6 +97,7 @@ class Application(QMainWindow):
         self.dashboard_controller.logout_requested.connect(self.on_logout)
         self.dashboard_controller.suppliers_requested.connect(self.on_suppliers)
         self.dashboard_controller.products_requested.connect(self.on_products)
+        self.dashboard_controller.inventory_requested.connect(self.on_inventory)
         self.dashboard_controller.configuration_requested.connect(self.on_configuration)
         
         # Center the window
@@ -127,6 +133,10 @@ class Application(QMainWindow):
         # Ctrl+P: Products
         self.shortcut_products = QShortcut(QKeySequence("Ctrl+P"), self)
         self.shortcut_products.activated.connect(self._navigate_to_products)
+        
+        # Ctrl+I: Inventory
+        self.shortcut_inventory = QShortcut(QKeySequence("Ctrl+I"), self)
+        self.shortcut_inventory.activated.connect(self._navigate_to_inventory)
         
         # Ctrl+O: Configuration
         self.shortcut_configuration = QShortcut(QKeySequence("Ctrl+O"), self)
@@ -183,6 +193,17 @@ class Application(QMainWindow):
             self.setMinimumSize(800, 600)
             self._center_window()
     
+    def _navigate_to_inventory(self):
+        """Navigate to inventory if logged in."""
+        if self.current_user_id is not None:
+            if self.inventory_controller:
+                self.inventory_controller.refresh_inventory()
+            self.inventory_view.nav_panel.set_current_view("inventory")
+            self.stacked_widget.setCurrentIndex(self.inventory_index)
+            self.setWindowTitle("Inventory")
+            self.setMinimumSize(800, 600)
+            self._center_window()
+    
     def _navigate_to_configuration(self):
         """Navigate to configuration if logged in."""
         if self.current_user_id is not None:
@@ -216,6 +237,9 @@ class Application(QMainWindow):
             elif current_index == self.products_index:
                 if self.products_controller:
                     self.products_controller.refresh_products()
+            elif current_index == self.inventory_index:
+                if self.inventory_controller:
+                    self.inventory_controller.refresh_inventory()
     
     def _show_shortcuts_help(self):
         """Show keyboard shortcuts help dialog."""
@@ -292,6 +316,21 @@ class Application(QMainWindow):
         else:
             self.products_controller.set_user_id(user_id)
         
+        # Initialize or update inventory controller with user_id
+        if self.inventory_controller is None:
+            self.inventory_controller = InventoryController(
+                self.inventory_view,
+                self.product_model,
+                user_id
+            )
+            self.inventory_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.inventory_controller.suppliers_requested.connect(self.on_suppliers)
+            self.inventory_controller.products_requested.connect(self.on_products)
+            self.inventory_controller.configuration_requested.connect(self.on_configuration)
+            self.inventory_controller.logout_requested.connect(self.on_logout)
+        else:
+            self.inventory_controller.set_user_id(user_id)
+        
         # Initialize configuration controller
         if self.configuration_controller is None:
             self.configuration_controller = ConfigurationController(
@@ -338,6 +377,19 @@ class Application(QMainWindow):
         # Switch to products view
         self.stacked_widget.setCurrentIndex(self.products_index)
         self.setWindowTitle("Products")
+        self.setMinimumSize(800, 600)
+        self._center_window()
+    
+    def on_inventory(self):
+        """Handle navigation to inventory."""
+        # Refresh inventory for current user
+        if self.inventory_controller:
+            self.inventory_controller.refresh_inventory()
+        # Update navigation highlighting
+        self.inventory_view.nav_panel.set_current_view("inventory")
+        # Switch to inventory view
+        self.stacked_widget.setCurrentIndex(self.inventory_index)
+        self.setWindowTitle("Inventory")
         self.setMinimumSize(800, 600)
         self._center_window()
     
