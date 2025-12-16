@@ -1,6 +1,7 @@
 """Reusable navigation panel widget."""
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QPushButton, QLabel
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QShortcut, QKeySequence
 
 
 class NavigationPanel(QFrame):
@@ -46,42 +47,42 @@ class NavigationPanel(QFrame):
         nav_layout.addSpacing(10)
         
         # Dashboard menu item
-        self.dashboard_button = QPushButton("Dashboard (Ctrl+D)")
+        self.dashboard_button = QPushButton("Dashboard (F1)")
         self.dashboard_button.setObjectName("navButton")
         self.dashboard_button.setMinimumHeight(30)
         self.dashboard_button.clicked.connect(self._handle_dashboard)
         nav_layout.addWidget(self.dashboard_button)
         
         # Suppliers menu item
-        self.suppliers_button = QPushButton("Suppliers (Ctrl+S)")
+        self.suppliers_button = QPushButton("Suppliers (F2)")
         self.suppliers_button.setObjectName("navButton")
         self.suppliers_button.setMinimumHeight(30)
         self.suppliers_button.clicked.connect(self._handle_suppliers)
         nav_layout.addWidget(self.suppliers_button)
         
         # Products menu item
-        self.products_button = QPushButton("Products (Ctrl+P)")
+        self.products_button = QPushButton("Products (F3)")
         self.products_button.setObjectName("navButton")
         self.products_button.setMinimumHeight(30)
         self.products_button.clicked.connect(self._handle_products)
         nav_layout.addWidget(self.products_button)
         
         # Inventory menu item
-        self.inventory_button = QPushButton("Inventory (Ctrl+I)")
+        self.inventory_button = QPushButton("Inventory (F4)")
         self.inventory_button.setObjectName("navButton")
         self.inventory_button.setMinimumHeight(30)
         self.inventory_button.clicked.connect(self._handle_inventory)
         nav_layout.addWidget(self.inventory_button)
         
         # Book Keeper menu item
-        self.bookkeeper_button = QPushButton("Book Keeper (Ctrl+B)")
+        self.bookkeeper_button = QPushButton("Book Keeper (F5)")
         self.bookkeeper_button.setObjectName("navButton")
         self.bookkeeper_button.setMinimumHeight(30)
         self.bookkeeper_button.clicked.connect(self._handle_bookkeeper)
         nav_layout.addWidget(self.bookkeeper_button)
         
         # Configuration menu item
-        self.config_button = QPushButton("Configuration (Ctrl+O)")
+        self.config_button = QPushButton("Configuration (F6)")
         self.config_button.setObjectName("navButton")
         self.config_button.setMinimumHeight(30)
         self.config_button.clicked.connect(self._handle_configuration)
@@ -98,7 +99,7 @@ class NavigationPanel(QFrame):
         nav_layout.addSpacing(15)
         
         # Logout menu item
-        self.logout_button = QPushButton("Logout (Ctrl+L)")
+        self.logout_button = QPushButton("Logout (F7)")
         self.logout_button.setObjectName("navButton")
         self.logout_button.setMinimumHeight(30)
         self.logout_button.clicked.connect(self._handle_logout)
@@ -127,6 +128,9 @@ class NavigationPanel(QFrame):
         self.bookkeeper_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.config_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.logout_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        # Note: F key shortcuts are handled by the main window (main.py)
+        # to ensure they work globally regardless of focus
     
     def _handle_dashboard(self):
         """Handle dashboard button click."""

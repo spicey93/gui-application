@@ -27,3 +27,4 @@ alwaysApply: true
 - I don't want any files longer than 300 lines of code. At that point, refactor and modularise the code.
 - If there is duplicate code on different files, consider using classes or some other method to reduce repetition of code.
 - Whenever we add a keyboard shortcut, append that shortcut to the button, label or widget that uses that shortcut.
+- Make sure to check that any shortcuts we are using are not already being used somewhere else in the application. Maybe have somewhere where we keep track of shortcuts so we can quickly this condition.

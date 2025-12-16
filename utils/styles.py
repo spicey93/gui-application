@@ -1,5 +1,6 @@
 """Centralized style constants and utilities."""
-from typing import Dict
+from pathlib import Path
+from typing import Dict, Optional
 
 
 class AppStyles:
@@ -66,4 +67,30 @@ class AppStyles:
     def placeholder_style(size: str = FONT_SIZE_MEDIUM) -> str:
         """Generate placeholder text style."""
         return AppStyles.label_style(size, color=AppStyles.COLOR_PLACEHOLDER)
+
+
+def load_theme_stylesheet() -> str:
+    """
+    Load the Windows XP theme stylesheet from file.
+    
+    Returns:
+        The stylesheet content as a string, or empty string if file not found
+    """
+    stylesheet_path = Path(__file__).parent.parent / "styles" / "xp_theme.qss"
+    if stylesheet_path.exists():
+        with open(stylesheet_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
+
+
+def apply_theme(widget) -> None:
+    """
+    Apply the Windows XP theme to a widget (window, dialog, etc.).
+    
+    Args:
+        widget: The widget to apply the theme to
+    """
+    stylesheet = load_theme_stylesheet()
+    if stylesheet:
+        widget.setStyleSheet(stylesheet)
 

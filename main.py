@@ -5,6 +5,7 @@ from typing import Optional
 from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget, QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QShortcut, QKeySequence
+from utils.styles import load_theme_stylesheet, apply_theme
 
 from models.user import User
 from models.supplier import Supplier
@@ -118,10 +119,7 @@ class Application(QMainWindow):
     
     def _load_xp_theme(self):
         """Load Windows XP theme stylesheet."""
-        stylesheet_path = Path(__file__).parent / "styles" / "xp_theme.qss"
-        if stylesheet_path.exists():
-            with open(stylesheet_path, "r", encoding="utf-8") as f:
-                self.setStyleSheet(f.read())
+        apply_theme(self)
     
     def _center_window(self):
         """Center the window on the screen."""
@@ -132,48 +130,59 @@ class Application(QMainWindow):
     
     def _setup_shortcuts(self):
         """Set up global keyboard shortcuts."""
-        # Ctrl+D: Dashboard
-        self.shortcut_dashboard = QShortcut(QKeySequence("Ctrl+D"), self)
+        # F1: Dashboard
+        self.shortcut_dashboard = QShortcut(QKeySequence("F1"), self)
+        self.shortcut_dashboard.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_dashboard.activated.connect(self._navigate_to_dashboard)
         
-        # Ctrl+S: Suppliers
-        self.shortcut_suppliers = QShortcut(QKeySequence("Ctrl+S"), self)
+        # F2: Suppliers
+        self.shortcut_suppliers = QShortcut(QKeySequence("F2"), self)
+        self.shortcut_suppliers.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_suppliers.activated.connect(self._navigate_to_suppliers)
         
-        # Ctrl+P: Products
-        self.shortcut_products = QShortcut(QKeySequence("Ctrl+P"), self)
+        # F3: Products
+        self.shortcut_products = QShortcut(QKeySequence("F3"), self)
+        self.shortcut_products.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_products.activated.connect(self._navigate_to_products)
         
-        # Ctrl+I: Inventory
-        self.shortcut_inventory = QShortcut(QKeySequence("Ctrl+I"), self)
+        # F4: Inventory
+        self.shortcut_inventory = QShortcut(QKeySequence("F4"), self)
+        self.shortcut_inventory.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_inventory.activated.connect(self._navigate_to_inventory)
         
-        # Ctrl+B: Book Keeper
-        self.shortcut_bookkeeper = QShortcut(QKeySequence("Ctrl+B"), self)
+        # F5: Book Keeper
+        self.shortcut_bookkeeper = QShortcut(QKeySequence("F5"), self)
+        self.shortcut_bookkeeper.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_bookkeeper.activated.connect(self._navigate_to_bookkeeper)
         
-        # Ctrl+O: Configuration
-        self.shortcut_configuration = QShortcut(QKeySequence("Ctrl+O"), self)
+        # F6: Configuration
+        self.shortcut_configuration = QShortcut(QKeySequence("F6"), self)
+        self.shortcut_configuration.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_configuration.activated.connect(self._navigate_to_configuration)
         
-        # Ctrl+L: Logout
-        self.shortcut_logout = QShortcut(QKeySequence("Ctrl+L"), self)
+        # F7: Logout
+        self.shortcut_logout = QShortcut(QKeySequence("F7"), self)
+        self.shortcut_logout.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_logout.activated.connect(self._handle_logout_shortcut)
         
         # Ctrl+N: Add Supplier/Product (context-dependent)
         self.shortcut_add = QShortcut(QKeySequence("Ctrl+N"), self)
+        self.shortcut_add.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_add.activated.connect(self._handle_add_shortcut)
         
-        # F5: Refresh (context-dependent)
-        self.shortcut_refresh = QShortcut(QKeySequence("F5"), self)
+        # F8: Refresh (context-dependent)
+        self.shortcut_refresh = QShortcut(QKeySequence("F8"), self)
+        self.shortcut_refresh.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_refresh.activated.connect(self._handle_refresh_shortcut)
         
-        # F1: Show keyboard shortcuts help
-        self.shortcut_help = QShortcut(QKeySequence("F1"), self)
+        # F9: Show keyboard shortcuts help
+        self.shortcut_help = QShortcut(QKeySequence("F9"), self)
+        self.shortcut_help.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_help.activated.connect(self._show_shortcuts_help)
         
         # Ctrl+Q: Exit application
         self.shortcut_quit = QShortcut(QKeySequence("Ctrl+Q"), self)
+        self.shortcut_quit.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_quit.activated.connect(self._exit_application)
     
     def _navigate_to_dashboard(self):

@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QKeyEvent
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
+from utils.styles import apply_theme
 
 
 class ProductsTableWidget(QTableWidget):
@@ -129,6 +130,7 @@ class ProductsView(BaseTabbedView):
         dialog.setModal(True)
         dialog.setMinimumSize(600, 500)
         dialog.resize(600, 500)
+        apply_theme(dialog)
         
         # Add Escape key shortcut for cancel
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
@@ -265,6 +267,7 @@ class ProductsView(BaseTabbedView):
         dialog.setModal(True)
         dialog.setMinimumSize(500, 400)
         dialog.resize(500, 400)
+        apply_theme(dialog)
         
         # Add Escape key shortcut for cancel
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)

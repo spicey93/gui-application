@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QPushButton, QFrame
 )
 from PySide6.QtCore import Qt
+from utils.styles import apply_theme
 
 
 class ShortcutsDialog(QDialog):
@@ -15,6 +16,7 @@ class ShortcutsDialog(QDialog):
         self.setModal(True)
         self.setMinimumSize(500, 400)
         self.resize(500, 400)
+        apply_theme(self)
         self._create_widgets()
     
     def _create_widgets(self):
@@ -38,12 +40,14 @@ class ShortcutsDialog(QDialog):
         shortcuts_text = """
         <b>Navigation Shortcuts:</b><br><br>
         
-        <b>Ctrl+D</b> - Navigate to Dashboard<br>
-        <b>Ctrl+S</b> - Navigate to Suppliers<br>
-        <b>Ctrl+P</b> - Navigate to Products<br>
-        <b>Ctrl+L</b> - Logout<br>
-        <b>Ctrl+Q</b> - Exit application<br>
-        <b>F1</b> - Show this help dialog<br><br>
+        <b>F1</b> - Navigate to Dashboard<br>
+        <b>F2</b> - Navigate to Suppliers<br>
+        <b>F3</b> - Navigate to Products<br>
+        <b>F4</b> - Navigate to Inventory<br>
+        <b>F5</b> - Navigate to Book Keeper<br>
+        <b>F6</b> - Navigate to Configuration<br>
+        <b>F7</b> - Logout<br>
+        <b>Ctrl+Q</b> - Exit application<br><br>
         
         <b>Standard Navigation:</b><br><br>
         

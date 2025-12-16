@@ -21,9 +21,6 @@ class InventoryTableWidget(QTableWidget):
 class InventoryView(BaseTabbedView):
     """Inventory management GUI."""
     
-    # Additional signals beyond base class
-    refresh_requested = Signal()
-    
     def __init__(self):
         """Initialize the inventory view."""
         super().__init__(title="Inventory", current_view="inventory")
@@ -32,13 +29,6 @@ class InventoryView(BaseTabbedView):
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
-        # Add action button using base class method
-        self.refresh_button = self.add_action_button(
-            "Refresh (F5)",
-            self._handle_refresh,
-            "F5"
-        )
-        
         # Get content layout to add widgets directly (no tabs needed)
         content_layout = self.get_content_layout()
         
@@ -65,9 +55,8 @@ class InventoryView(BaseTabbedView):
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
-        # Tab order: Table -> Refresh -> Navigation panel
-        self.setTabOrder(self.inventory_table, self.refresh_button)
-        self.setTabOrder(self.refresh_button, self.nav_panel.logout_button)
+        # Tab order: Table -> Navigation panel
+        self.setTabOrder(self.inventory_table, self.nav_panel.logout_button)
         
         # Arrow keys work automatically in QTableWidget
         self.inventory_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -81,10 +70,6 @@ class InventoryView(BaseTabbedView):
             # Ensure first row is selected if nothing is selected
             if not self.inventory_table.selectedItems():
                 self.inventory_table.selectRow(0)
-    
-    def _handle_refresh(self):
-        """Handle refresh button click."""
-        self.refresh_requested.emit()
     
     def load_inventory(self, inventory_items: List[Dict[str, any]]):
         """

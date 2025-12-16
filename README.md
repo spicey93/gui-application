@@ -46,12 +46,15 @@ The application supports full keyboard-only navigation:
 - **Escape**: Cancel dialogs, close windows
 
 ### Custom Keyboard Shortcuts
-- **Ctrl+D**: Navigate to Dashboard
-- **Ctrl+S**: Navigate to Suppliers
-- **Ctrl+L**: Logout
+- **F1**: Navigate to Dashboard
+- **F2**: Navigate to Suppliers
+- **F3**: Navigate to Products
+- **F4**: Navigate to Inventory
+- **F5**: Navigate to Book Keeper
+- **F6**: Navigate to Configuration
+- **F7**: Logout
 - **Ctrl+N**: Add new supplier (when in Suppliers view)
 - **Ctrl+Enter**: Submit forms (login, create supplier, etc.)
-- **F5**: Refresh current view (suppliers list)
 
 ## Testing
 
@@ -107,7 +110,7 @@ gui-app/
 1. **Login**: Enter your username and password to log in
 2. **Dashboard**: After successful login, you'll be taken to the dashboard
 3. **Suppliers**: Navigate to suppliers to manage your supplier list
-4. **Logout**: Click the logout button or press Ctrl+L to return to the login screen
+4. **Logout**: Click the logout button or press F7 to return to the login screen
 
 ## Default Users
 

@@ -30,7 +30,6 @@ class InventoryController(QObject):
         self.inventory_view.products_requested.connect(self.handle_products)
         self.inventory_view.configuration_requested.connect(self.handle_configuration)
         self.inventory_view.logout_requested.connect(self.handle_logout)
-        self.inventory_view.refresh_requested.connect(self.refresh_inventory)
         
         # Load initial inventory
         self.refresh_inventory()

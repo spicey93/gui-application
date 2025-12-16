@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal, QDate, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable, TYPE_CHECKING
 from views.base_view import BaseTabbedView
+from utils.styles import apply_theme
 
 if TYPE_CHECKING:
     from controllers.invoice_controller import InvoiceController
@@ -105,10 +106,11 @@ class SuppliersView(BaseTabbedView):
     def _create_widgets(self):
         """Create and layout UI widgets."""
         # Add action buttons using base class method
+        # Note: Ctrl+N shortcut is handled by main window, not here to avoid conflicts
         self.add_supplier_button = self.add_action_button(
             "Add Supplier (Ctrl+N)",
             self._handle_add_supplier,
-            "Ctrl+N"
+            None  # No shortcut here - handled by main window
         )
         
         self.create_invoice_button = self.add_action_button(
@@ -503,6 +505,7 @@ class SuppliersView(BaseTabbedView):
         dialog.setModal(True)
         dialog.setMinimumSize(600, 500)
         dialog.resize(600, 500)
+        apply_theme(dialog)
         
         # Add Escape key shortcut for cancel
         from PySide6.QtGui import QShortcut, QKeySequence
@@ -856,6 +859,7 @@ class SuppliersView(BaseTabbedView):
         dialog.setModal(True)
         dialog.setMinimumSize(500, 300)
         dialog.resize(500, 300)
+        apply_theme(dialog)
         
         # Add Escape key shortcut for cancel
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
@@ -1071,6 +1075,7 @@ class SuppliersView(BaseTabbedView):
         dialog.setModal(True)
         dialog.setMinimumSize(800, 600)
         dialog.resize(800, 600)
+        apply_theme(dialog)
         
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
         esc_shortcut.activated.connect(dialog.reject)
@@ -1100,20 +1105,9 @@ class SuppliersView(BaseTabbedView):
         date_entry = QDateEdit()
         date_entry.setDate(QDate.currentDate())
         date_entry.setCalendarPopup(True)
+        date_entry.setStyleSheet("font-size: 12px;")
         date_layout.addWidget(date_entry, stretch=1)
         header_layout.addLayout(date_layout)
-        
-        # VAT Rate
-        vat_layout = QHBoxLayout()
-        vat_label = QLabel("VAT Rate (%):")
-        vat_label.setMinimumWidth(150)
-        vat_layout.addWidget(vat_label)
-        vat_entry = QDoubleSpinBox()
-        vat_entry.setRange(0, 100)
-        vat_entry.setValue(20.0)
-        vat_entry.setSuffix("%")
-        vat_layout.addWidget(vat_entry, stretch=1)
-        header_layout.addLayout(vat_layout)
         
         layout.addLayout(header_layout)
         
@@ -1123,11 +1117,12 @@ class SuppliersView(BaseTabbedView):
         layout.addWidget(items_label)
         
         items_table = QTableWidget()
-        items_table.setColumnCount(5)
-        items_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "Line Total"])
+        items_table.setColumnCount(6)
+        items_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "VAT Code", "Line Total"])
         items_table.horizontalHeader().setStretchLastSection(True)
         items_table.setAlternatingRowColors(True)
         items_table.setMinimumHeight(200)
+        items_table.setEditTriggers(QTableWidget.EditTrigger.AllEditTriggers)  # Allow editing VAT codes
         layout.addWidget(items_table)
         
         # Add Item button
@@ -1164,21 +1159,39 @@ class SuppliersView(BaseTabbedView):
         def update_totals():
             """Update totals from items."""
             subtotal = 0.0
+            vat_amount = 0.0
+            
+            # VAT rates by code: S=Standard (20%), E=Exempt (0%), Z=Zero (0%)
+            vat_rates = {'S': 20.0, 'E': 0.0, 'Z': 0.0}
+            
             for row in range(items_table.rowCount()):
                 qty_item = items_table.item(row, 2)
                 price_item = items_table.item(row, 3)
+                vat_code_item = items_table.item(row, 4)
                 if qty_item and price_item:
                     try:
                         qty = float(qty_item.text())
                         price = float(price_item.text())
                         line_total = qty * price
                         subtotal += line_total
-                        items_table.setItem(row, 4, QTableWidgetItem(f"£{line_total:.2f}"))
+                        
+                        # Calculate VAT for this line
+                        # Check if VAT code is a widget (combobox) or item (text)
+                        vat_code = 'S'  # Default
+                        vat_widget = items_table.cellWidget(row, 4)
+                        if vat_widget and isinstance(vat_widget, QComboBox):
+                            vat_code = vat_widget.currentText().strip().upper()
+                        elif vat_code_item:
+                            vat_code = vat_code_item.text().strip().upper()
+                        
+                        vat_rate = vat_rates.get(vat_code, 20.0)  # Default to 20% if unknown code
+                        line_vat = line_total * (vat_rate / 100.0)
+                        vat_amount += line_vat
+                        
+                        items_table.setItem(row, 5, QTableWidgetItem(f"£{line_total:.2f}"))
                     except ValueError:
                         pass
             
-            vat_rate = vat_entry.value()
-            vat_amount = subtotal * (vat_rate / 100.0)
             total = subtotal + vat_amount
             
             subtotal_label.setText(f"Subtotal: £{subtotal:.2f}")
@@ -1199,7 +1212,8 @@ class SuppliersView(BaseTabbedView):
                 return
             
             invoice_date = date_entry.date().toString("yyyy-MM-dd")
-            vat_rate = vat_entry.value()
+            # VAT rate is now per-item, so pass 0.0 as default
+            vat_rate = 0.0
             
             success, message, invoice_id = self.invoice_controller.create_invoice(
                 supplier_id, inv_num_entry.text().strip(), invoice_date, vat_rate
@@ -1215,6 +1229,14 @@ class SuppliersView(BaseTabbedView):
                 desc = items_table.item(row, 1).text()
                 qty = float(items_table.item(row, 2).text())
                 price = float(items_table.item(row, 3).text())
+                
+                # Get VAT code from widget or item
+                vat_widget = items_table.cellWidget(row, 4)
+                if vat_widget and isinstance(vat_widget, QComboBox):
+                    vat_code = vat_widget.currentText().strip().upper()
+                else:
+                    vat_code_item = items_table.item(row, 4)
+                    vat_code = vat_code_item.text().strip().upper() if vat_code_item else 'S'
                 
                 # Try to find product by stock number
                 product_id = None
@@ -1257,6 +1279,7 @@ class SuppliersView(BaseTabbedView):
         dialog.setModal(True)
         dialog.setMinimumSize(900, 800)
         dialog.resize(900, 800)
+        apply_theme(dialog)
         
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
         esc_shortcut.activated.connect(dialog.reject)
@@ -1330,8 +1353,8 @@ class SuppliersView(BaseTabbedView):
         
         # Basket table
         basket_table = QTableWidget()
-        basket_table.setColumnCount(5)
-        basket_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "Remove"])
+        basket_table.setColumnCount(6)
+        basket_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "VAT Code", "Remove"])
         basket_table.horizontalHeader().setStretchLastSection(True)
         basket_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         basket_table.setAlternatingRowColors(True)
@@ -1340,7 +1363,7 @@ class SuppliersView(BaseTabbedView):
         main_layout.addWidget(basket_table)
         
         # Basket data storage
-        basket_items = []  # List of dicts: {product_id, stock_number, description, quantity, unit_price}
+        basket_items = []  # List of dicts: {product_id, stock_number, description, quantity, unit_price, vat_code}
         
         # Load all products
         all_products = self.product_model.get_all(self._current_user_id) if hasattr(self, '_current_user_id') else []
@@ -1389,7 +1412,8 @@ class SuppliersView(BaseTabbedView):
                 'stock_number': product.get('stock_number', ''),
                 'description': product.get('description', ''),
                 'quantity': 1.0,
-                'unit_price': 0.0
+                'unit_price': 0.0,
+                'vat_code': 'S'  # Default to Standard VAT
             })
             update_basket_table()
         
@@ -1423,11 +1447,19 @@ class SuppliersView(BaseTabbedView):
                 price_spin.valueChanged.connect(lambda val, r=row: update_basket_item(r, 'unit_price', val))
                 basket_table.setCellWidget(row, 3, price_spin)
                 
+                # VAT Code combobox
+                vat_combo = QComboBox()
+                vat_combo.addItems(['S', 'E', 'Z'])
+                vat_combo.setCurrentText(item.get('vat_code', 'S'))
+                vat_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                vat_combo.currentTextChanged.connect(lambda val, r=row: update_basket_item(r, 'vat_code', val))
+                basket_table.setCellWidget(row, 4, vat_combo)
+                
                 # Remove button
                 remove_btn = QPushButton("Remove")
                 remove_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
                 remove_btn.clicked.connect(lambda checked, r=row: remove_from_basket(r))
-                basket_table.setCellWidget(row, 4, remove_btn)
+                basket_table.setCellWidget(row, 5, remove_btn)
             
             basket_table.resizeColumnsToContents()
         
@@ -1469,7 +1501,16 @@ class SuppliersView(BaseTabbedView):
                 items_table.setItem(row, 1, QTableWidgetItem(item['description']))
                 items_table.setItem(row, 2, QTableWidgetItem(str(item['quantity'])))
                 items_table.setItem(row, 3, QTableWidgetItem(str(item['unit_price'])))
-                items_table.setItem(row, 4, QTableWidgetItem(f"£{item['quantity'] * item['unit_price']:.2f}"))
+                
+                # VAT Code combobox
+                vat_combo = QComboBox()
+                vat_combo.addItems(['S', 'E', 'Z'])
+                vat_combo.setCurrentText(item.get('vat_code', 'S'))
+                if update_totals_callback:
+                    vat_combo.currentTextChanged.connect(update_totals_callback)
+                items_table.setCellWidget(row, 4, vat_combo)
+                
+                items_table.setItem(row, 5, QTableWidgetItem(f"£{item['quantity'] * item['unit_price']:.2f}"))
             
             # Trigger totals update in parent dialog
             if update_totals_callback:
@@ -1526,6 +1567,7 @@ class SuppliersView(BaseTabbedView):
         dialog.setModal(True)
         dialog.setMinimumSize(800, 600)
         dialog.resize(800, 600)
+        apply_theme(dialog)
         
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
         esc_shortcut.activated.connect(dialog.reject)
@@ -1666,6 +1708,7 @@ class SuppliersView(BaseTabbedView):
         dialog.setWindowTitle("Create Payment")
         dialog.setModal(True)
         dialog.setMinimumSize(500, 400)
+        apply_theme(dialog)
         
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
         esc_shortcut.activated.connect(dialog.reject)
@@ -1787,6 +1830,7 @@ class SuppliersView(BaseTabbedView):
         dialog.setWindowTitle("Allocate Payment")
         dialog.setModal(True)
         dialog.setMinimumSize(600, 500)
+        apply_theme(dialog)
         
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
         esc_shortcut.activated.connect(dialog.reject)
