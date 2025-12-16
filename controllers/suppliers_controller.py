@@ -82,13 +82,21 @@ class SuppliersController(QObject):
         self.refresh_suppliers()
     
     def _on_invoice_change(self):
-        """Handle invoice changes - refresh suppliers to update balances."""
+        """Handle invoice changes - refresh suppliers to update balances and invoices tab."""
         self.refresh_suppliers()
+        # Refresh invoices tab if it's currently visible and a supplier is selected
+        if hasattr(self.suppliers_view, 'tab_widget'):
+            if self.suppliers_view.tab_widget.currentIndex() == 2:  # Invoices tab
+                self.suppliers_view._refresh_invoices_tab()
         self.balance_changed.emit()
     
     def _on_payment_change(self):
-        """Handle payment changes - refresh suppliers to update balances."""
+        """Handle payment changes - refresh suppliers to update balances and payments tab."""
         self.refresh_suppliers()
+        # Refresh payments tab if it's currently visible and a supplier is selected
+        if hasattr(self.suppliers_view, 'tab_widget'):
+            if self.suppliers_view.tab_widget.currentIndex() == 3:  # Payments tab
+                self.suppliers_view._refresh_payments_tab()
         self.balance_changed.emit()
     
     def handle_create(self, account_number: str, name: str):
@@ -125,6 +133,9 @@ class SuppliersController(QObject):
         """Refresh the suppliers list."""
         suppliers = self.supplier_model.get_all(self.user_id)
         self.suppliers_view.load_suppliers(suppliers)
+        
+        # Note: Invoices and payments are now supplier-specific and will be refreshed
+        # when a supplier is selected or when switching to those tabs
     
     def handle_dashboard(self):
         """Handle dashboard navigation."""

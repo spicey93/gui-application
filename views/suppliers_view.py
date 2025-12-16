@@ -1,14 +1,14 @@
 """Suppliers view GUI."""
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
-    QPushButton, QFrame, QTableWidget, QTableWidgetItem,
-    QDialog, QLineEdit, QTabWidget, QMessageBox, QHeaderView,
-    QDateEdit, QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QTableWidget, QTableWidgetItem, QDialog, QLineEdit, 
+    QTabWidget, QMessageBox, QHeaderView, QDateEdit, 
+    QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit
 )
 from PySide6.QtCore import Qt, Signal, QDate, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable, TYPE_CHECKING
-from views.navigation_panel import NavigationPanel
+from views.base_view import BaseTabbedView
 
 if TYPE_CHECKING:
     from controllers.invoice_controller import InvoiceController
@@ -41,6 +41,7 @@ class InvoicesTableWidget(QTableWidget):
         """Initialize the table widget."""
         super().__init__()
         self.enter_callback = enter_callback
+        self.enter_callback = enter_callback
     
     def keyPressEvent(self, event: QKeyEvent):
         """Handle key press events."""
@@ -72,13 +73,10 @@ class PaymentsTableWidget(QTableWidget):
         super().keyPressEvent(event)
 
 
-class SuppliersView(QWidget):
+class SuppliersView(BaseTabbedView):
     """Suppliers management GUI."""
     
-    # Signals
-    dashboard_requested = Signal()
-    configuration_requested = Signal()
-    logout_requested = Signal()
+    # Additional signals beyond base class
     create_requested = Signal(str, str)
     update_requested = Signal(int, str, str)
     delete_requested = Signal(int)
@@ -86,7 +84,7 @@ class SuppliersView(QWidget):
     
     def __init__(self):
         """Initialize the suppliers view."""
-        super().__init__()
+        super().__init__(title="Suppliers", current_view="suppliers")
         self.invoice_controller: Optional["InvoiceController"] = None
         self.payment_controller: Optional["PaymentController"] = None
         self.supplier_model: Optional["Supplier"] = None
@@ -106,47 +104,42 @@ class SuppliersView(QWidget):
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
-        main_layout = QHBoxLayout(self)
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        # Add action buttons using base class method
+        self.add_supplier_button = self.add_action_button(
+            "Add Supplier (Ctrl+N)",
+            self._handle_add_supplier,
+            "Ctrl+N"
+        )
         
-        # Navigation panel (left sidebar)
-        self.nav_panel = NavigationPanel(current_view="suppliers")
-        self.nav_panel.dashboard_requested.connect(self._handle_dashboard)
-        self.nav_panel.suppliers_requested.connect(self._handle_suppliers)
-        self.nav_panel.products_requested.connect(self._handle_products)
-        self.nav_panel.configuration_requested.connect(self._handle_configuration)
-        self.nav_panel.logout_requested.connect(self._handle_logout)
+        self.create_invoice_button = self.add_action_button(
+            "Create Invoice (Ctrl+I)",
+            self._handle_create_invoice_from_tab,
+            "Ctrl+I"
+        )
         
-        # Add navigation panel to main layout
-        main_layout.addWidget(self.nav_panel)
+        self.create_payment_button = self.add_action_button(
+            "Create Payment (Ctrl+P)",
+            self._handle_create_payment_from_tab,
+            "Ctrl+P"
+        )
         
-        # Content area (right side)
-        content_frame = QWidget()
-        content_layout = QVBoxLayout(content_frame)
-        content_layout.setSpacing(20)
-        content_layout.setContentsMargins(40, 40, 40, 40)
+        # Create tabs widget
+        self.tab_widget = self.create_tabs()
         
-        # Title and Add Supplier button
-        title_layout = QHBoxLayout()
-        title_layout.setContentsMargins(0, 0, 0, 0)
+        # Connect tab change signal to update details when Details tab is selected
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
         
-        title_label = QLabel("Suppliers")
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-        title_layout.addWidget(title_label)
+        # Track selected supplier for details tab
+        self.selected_supplier_id: Optional[int] = None
         
-        title_layout.addStretch()
-        
-        self.add_supplier_button = QPushButton("Add Supplier (Ctrl+N)")
-        self.add_supplier_button.setMinimumWidth(180)
-        self.add_supplier_button.setMinimumHeight(30)
-        self.add_supplier_button.clicked.connect(self._handle_add_supplier)
-        title_layout.addWidget(self.add_supplier_button)
-        
-        content_layout.addLayout(title_layout)
+        # Tab 1: Suppliers
+        suppliers_widget = QWidget()
+        suppliers_layout = QVBoxLayout(suppliers_widget)
+        suppliers_layout.setSpacing(20)
+        suppliers_layout.setContentsMargins(0, 0, 0, 0)
         
         # Suppliers table
-        self.suppliers_table = SuppliersTableWidget(self._open_selected_supplier)
+        self.suppliers_table = SuppliersTableWidget(self._switch_to_details_tab)
         self.suppliers_table.setColumnCount(4)
         self.suppliers_table.setHorizontalHeaderLabels(["ID", "Account Number", "Name", "Outstanding Balance"])
         self.suppliers_table.horizontalHeader().setStretchLastSection(True)
@@ -164,13 +157,134 @@ class SuppliersView(QWidget):
         # Enable keyboard navigation
         self.suppliers_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
+        # Selection changed - update selected supplier
+        self.suppliers_table.itemSelectionChanged.connect(self._on_supplier_selection_changed)
+        
         # Double-click to edit
         self.suppliers_table.itemDoubleClicked.connect(self._on_table_double_click)
         
-        content_layout.addWidget(self.suppliers_table)
+        suppliers_layout.addWidget(self.suppliers_table)
         
-        # Add content area to main layout
-        main_layout.addWidget(content_frame, stretch=1)
+        self.add_tab(suppliers_widget, "Suppliers (Ctrl+1)", "Ctrl+1")
+        
+        # Tab 2: Details
+        details_widget = QWidget()
+        details_layout = QVBoxLayout(details_widget)
+        details_layout.setSpacing(20)
+        details_layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Details content (will be populated when supplier is selected)
+        self.details_label = QLabel("Select a supplier from the Suppliers tab to view details.")
+        self.details_label.setStyleSheet("font-size: 12px; color: gray;")
+        details_layout.addWidget(self.details_label)
+        
+        # Details form (hidden until supplier selected)
+        self.details_form = QWidget()
+        details_form_layout = QVBoxLayout(self.details_form)
+        details_form_layout.setSpacing(15)
+        details_form_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Supplier ID (read-only)
+        id_layout = QHBoxLayout()
+        id_label = QLabel("ID:")
+        id_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        id_label.setMinimumWidth(150)
+        id_layout.addWidget(id_label)
+        self.details_id_label = QLabel("")
+        self.details_id_label.setStyleSheet("font-size: 12px;")
+        id_layout.addWidget(self.details_id_label)
+        id_layout.addStretch()
+        details_form_layout.addLayout(id_layout)
+        
+        # Account Number (editable)
+        account_layout = QHBoxLayout()
+        account_label = QLabel("Account Number:")
+        account_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        account_label.setMinimumWidth(150)
+        account_layout.addWidget(account_label)
+        self.details_account_entry = QLineEdit()
+        self.details_account_entry.setStyleSheet("font-size: 12px;")
+        account_layout.addWidget(self.details_account_entry, stretch=1)
+        details_form_layout.addLayout(account_layout)
+        
+        # Name (editable)
+        name_layout = QHBoxLayout()
+        name_label = QLabel("Name:")
+        name_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        name_label.setMinimumWidth(150)
+        name_layout.addWidget(name_label)
+        self.details_name_entry = QLineEdit()
+        self.details_name_entry.setStyleSheet("font-size: 12px;")
+        name_layout.addWidget(self.details_name_entry, stretch=1)
+        details_form_layout.addLayout(name_layout)
+        
+        # Buttons
+        details_buttons_layout = QHBoxLayout()
+        details_buttons_layout.addStretch()
+        
+        self.details_save_button = QPushButton("Save Changes (Ctrl+Enter)")
+        self.details_save_button.setMinimumWidth(200)
+        self.details_save_button.setMinimumHeight(30)
+        self.details_save_button.clicked.connect(self._handle_save_details)
+        details_buttons_layout.addWidget(self.details_save_button)
+        
+        self.details_delete_button = QPushButton("Delete Supplier (Ctrl+Shift+D)")
+        self.details_delete_button.setMinimumWidth(220)
+        self.details_delete_button.setMinimumHeight(30)
+        self.details_delete_button.clicked.connect(self._handle_delete_details)
+        details_buttons_layout.addWidget(self.details_delete_button)
+        
+        details_form_layout.addLayout(details_buttons_layout)
+        details_form_layout.addStretch()
+        
+        self.details_form.hide()
+        details_layout.addWidget(self.details_form)
+        details_layout.addStretch()
+        
+        self.add_tab(details_widget, "Details (Ctrl+2)", "Ctrl+2")
+        
+        # Tab 3: Invoices
+        invoices_widget = QWidget()
+        invoices_layout = QVBoxLayout(invoices_widget)
+        invoices_layout.setSpacing(20)
+        invoices_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Invoices table
+        self.invoices_table = InvoicesTableWidget(self._handle_invoice_enter)
+        self.invoices_table.setColumnCount(6)
+        self.invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Supplier", "Total", "Outstanding", "Status"])
+        self.invoices_table.horizontalHeader().setStretchLastSection(True)
+        self.invoices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.invoices_table.setAlternatingRowColors(True)
+        self.invoices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.invoices_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        invoices_layout.addWidget(self.invoices_table)
+        
+        self.add_tab(invoices_widget, "Invoices (Ctrl+3)", "Ctrl+3")
+        
+        # Tab 4: Payments
+        payments_widget = QWidget()
+        payments_layout = QVBoxLayout(payments_widget)
+        payments_layout.setSpacing(20)
+        payments_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Payments table
+        self.payments_table = PaymentsTableWidget(self._handle_payment_enter)
+        self.payments_table.setColumnCount(6)
+        self.payments_table.setHorizontalHeaderLabels(["Date", "Amount", "Supplier", "Method", "Reference", "Unallocated"])
+        self.payments_table.horizontalHeader().setStretchLastSection(True)
+        self.payments_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.payments_table.setAlternatingRowColors(True)
+        self.payments_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.payments_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        payments_layout.addWidget(self.payments_table)
+        
+        self.add_tab(payments_widget, "Payments (Ctrl+4)", "Ctrl+4")
+        
+        # Set Suppliers tab as default
+        self.tab_widget.setCurrentIndex(0)
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
@@ -180,40 +294,37 @@ class SuppliersView(QWidget):
         self.setTabOrder(self.add_supplier_button, self.nav_panel.logout_button)
         
         # Arrow keys work automatically in QTableWidget
-        # Enter key on table row opens details
+        # Enter key on table row switches to details tab
         self.suppliers_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        # Add shortcuts for details tab
+        save_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self)
+        save_shortcut.activated.connect(self._handle_save_details)
+        
+        delete_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        delete_shortcut.activated.connect(self._handle_delete_details)
     
     def showEvent(self, event: QEvent):
         """Handle show event - set focus to table if it has data."""
         super().showEvent(event)
+        # Ensure Suppliers tab is shown first
+        self.tab_widget.setCurrentIndex(0)
         # Set focus to table if it has rows
         if self.suppliers_table.rowCount() > 0:
             self.suppliers_table.setFocus()
             # Ensure first row is selected if nothing is selected
             if not self.suppliers_table.selectedItems():
                 self.suppliers_table.selectRow(0)
-    
-    def _handle_dashboard(self):
-        """Handle dashboard button click."""
-        self.dashboard_requested.emit()
-    
-    def _handle_suppliers(self):
-        """Handle suppliers button click."""
-        # Already on suppliers page
-        pass
-    
-    def _handle_products(self):
-        """Handle products button click."""
-        # Navigation handled by main app
-        pass
-    
-    def _handle_configuration(self):
-        """Handle configuration button click."""
-        self.configuration_requested.emit()
-    
-    def _handle_logout(self):
-        """Handle logout button click."""
-        self.logout_requested.emit()
+                self._on_supplier_selection_changed()
+        
+        # Refresh invoices and payments when view is shown (will be supplier-specific if supplier is selected)
+        self.refresh_requested.emit()
+        # If a supplier is selected, refresh the invoices and payments tabs
+        if self.selected_supplier_id:
+            if self.tab_widget.currentIndex() == 2:  # Invoices tab
+                self._refresh_invoices_tab()
+            elif self.tab_widget.currentIndex() == 3:  # Payments tab
+                self._refresh_payments_tab()
     
     def _handle_add_supplier(self):
         """Handle Add Supplier button click."""
@@ -221,19 +332,169 @@ class SuppliersView(QWidget):
     
     def _on_table_double_click(self, item: QTableWidgetItem):
         """Handle double-click on table item."""
-        self._open_selected_supplier()
+        self._switch_to_details_tab()
     
-    def _open_selected_supplier(self):
-        """Open details for the currently selected supplier."""
+    def _on_supplier_selection_changed(self):
+        """Handle supplier selection change - update selected supplier ID."""
+        selected_items = self.suppliers_table.selectedItems()
+        if selected_items:
+            row = selected_items[0].row()
+            supplier_id = int(self.suppliers_table.item(row, 0).text())
+            self.selected_supplier_id = supplier_id
+            # Update current tab based on which one is active
+            current_tab = self.tab_widget.currentIndex()
+            if current_tab == 1:  # Details tab
+                self._update_details_tab()
+            elif current_tab == 2:  # Invoices tab
+                self._refresh_invoices_tab()
+            elif current_tab == 3:  # Payments tab
+                self._refresh_payments_tab()
+    
+    def _on_tab_changed(self, index: int):
+        """Handle tab change - update tab content based on selected supplier."""
+        # Get the currently selected supplier from the table
+        selected_items = self.suppliers_table.selectedItems()
+        if selected_items:
+            row = selected_items[0].row()
+            supplier_id = int(self.suppliers_table.item(row, 0).text())
+            self.selected_supplier_id = supplier_id
+        else:
+            self.selected_supplier_id = None
+        
+        if index == 1:  # Details tab
+            if self.selected_supplier_id:
+                self._update_details_tab()
+            else:
+                # No supplier selected, show placeholder
+                self.details_label.show()
+                self.details_form.hide()
+        elif index == 2:  # Invoices tab
+            self._refresh_invoices_tab()
+        elif index == 3:  # Payments tab
+            self._refresh_payments_tab()
+    
+    def _refresh_invoices_tab(self):
+        """Refresh the invoices tab with supplier-specific invoices."""
+        if not self.selected_supplier_id or not self.invoice_controller:
+            # Clear table if no supplier selected
+            self.invoices_table.setRowCount(0)
+            return
+        
+        invoices = self.invoice_controller.get_invoices(self.selected_supplier_id)
+        self.load_invoices(invoices)
+    
+    def _refresh_payments_tab(self):
+        """Refresh the payments tab with supplier-specific payments."""
+        if not self.selected_supplier_id or not self.payment_controller:
+            # Clear table if no supplier selected
+            self.payments_table.setRowCount(0)
+            return
+        
+        payments = self.payment_controller.get_payments(self.selected_supplier_id)
+        self.load_payments(payments)
+    
+    def _switch_to_details_tab(self):
+        """Switch to details tab for the currently selected supplier."""
         selected_items = self.suppliers_table.selectedItems()
         if not selected_items:
             return
         
         row = selected_items[0].row()
         supplier_id = int(self.suppliers_table.item(row, 0).text())
-        account_number = self.suppliers_table.item(row, 1).text()
-        name = self.suppliers_table.item(row, 2).text()
-        self._show_supplier_details(supplier_id, account_number, name)
+        self.selected_supplier_id = supplier_id
+        self._update_details_tab()
+        self.tab_widget.setCurrentIndex(1)
+    
+    def _update_details_tab(self):
+        """Update the details tab with selected supplier information."""
+        if not self.selected_supplier_id or not self.supplier_model:
+            return
+        
+        supplier_data = self.supplier_model.get_by_id(self.selected_supplier_id, self._current_user_id)
+        if not supplier_data:
+            return
+        
+        self.details_id_label.setText(str(supplier_data['id']))
+        self.details_account_entry.setText(supplier_data['account_number'])
+        self.details_name_entry.setText(supplier_data['name'])
+        
+        self.details_label.hide()
+        self.details_form.show()
+    
+    def _handle_save_details(self):
+        """Handle save button in details tab."""
+        if not self.selected_supplier_id:
+            return
+        
+        new_account_number = self.details_account_entry.text().strip()
+        new_name = self.details_name_entry.text().strip()
+        
+        if not new_account_number or not new_name:
+            QMessageBox.critical(self, "Error", "Please fill in both account number and name")
+            return
+        
+        self.update_requested.emit(self.selected_supplier_id, new_account_number, new_name)
+    
+    def _handle_delete_details(self):
+        """Handle delete button in details tab."""
+        if not self.selected_supplier_id:
+            return
+        
+        supplier_name = self.details_name_entry.text()
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete supplier '{supplier_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.delete_requested.emit(self.selected_supplier_id)
+            self.selected_supplier_id = None
+            self.details_label.show()
+            self.details_form.hide()
+    
+    def _handle_create_invoice_from_tab(self):
+        """Handle create invoice button from invoices tab."""
+        if not self.invoice_controller:
+            QMessageBox.warning(self, "Error", "Invoice controller not available")
+            return
+        
+        # If a supplier is selected, use it; otherwise show dialog to select supplier
+        if self.selected_supplier_id:
+            self._create_invoice_dialog(None, self.selected_supplier_id)
+        else:
+            QMessageBox.information(self, "Info", "Please select a supplier first")
+    
+    def _handle_create_payment_from_tab(self):
+        """Handle create payment button from payments tab."""
+        if not self.payment_controller:
+            QMessageBox.warning(self, "Error", "Payment controller not available")
+            return
+        
+        # If a supplier is selected, use it; otherwise show dialog to select supplier
+        if self.selected_supplier_id:
+            self._create_payment_dialog(None, self.selected_supplier_id)
+        else:
+            QMessageBox.information(self, "Info", "Please select a supplier first")
+    
+    def _handle_invoice_enter(self, row: int):
+        """Handle Enter key on invoice row."""
+        if not self.invoice_controller or not self.selected_supplier_id:
+            return
+        
+        invoice_id = self.invoices_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        if invoice_id:
+            self._view_invoice_dialog(None, self.selected_supplier_id, invoice_id)
+    
+    def _handle_payment_enter(self, row: int):
+        """Handle Enter key on payment row."""
+        if not self.payment_controller or not self.selected_supplier_id:
+            return
+        
+        payment_id = self.payments_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        if payment_id:
+            self._allocate_payment_dialog(None, self.selected_supplier_id, payment_id)
     
     def _show_supplier_details(self, supplier_id: int, account_number: str, name: str):
         """Show supplier details in a popup dialog with tabs."""
@@ -709,6 +970,79 @@ class SuppliersView(QWidget):
             self.suppliers_table.setFocus()
             # Ensure the first row is visible
             self.suppliers_table.scrollToItem(self.suppliers_table.item(0, 0))
+            # Trigger selection changed to update details tab
+            self._on_supplier_selection_changed()
+    
+    def load_invoices(self, invoices: List[Dict[str, any]]):
+        """Load invoices into the invoices table."""
+        self.invoices_table.setRowCount(len(invoices))
+        
+        for row, invoice in enumerate(invoices):
+            invoice_id = invoice['id']
+            # Store invoice ID in first item's user data
+            invoice_num_item = QTableWidgetItem(invoice.get('invoice_number', ''))
+            invoice_num_item.setData(Qt.ItemDataRole.UserRole, invoice_id)
+            self.invoices_table.setItem(row, 0, invoice_num_item)
+            
+            self.invoices_table.setItem(row, 1, QTableWidgetItem(invoice.get('invoice_date', '')))
+            
+            # Since invoices are now supplier-specific, we don't need to show supplier name
+            # But we'll keep the column for consistency (or remove it if preferred)
+            # For now, we'll show the selected supplier's name or leave it empty
+            supplier_name = ""
+            if self.selected_supplier_id and self.supplier_model and hasattr(self, '_current_user_id'):
+                supplier_data = self.supplier_model.get_by_id(self.selected_supplier_id, self._current_user_id)
+                if supplier_data:
+                    supplier_name = supplier_data.get('name', '')
+            self.invoices_table.setItem(row, 2, QTableWidgetItem(supplier_name))
+            
+            self.invoices_table.setItem(row, 3, QTableWidgetItem(f"£{invoice.get('total', 0.0):.2f}"))
+            
+            # Calculate outstanding balance
+            outstanding = 0.0
+            if self.invoice_controller:
+                outstanding = self.invoice_controller.get_invoice_outstanding_balance(invoice_id)
+            self.invoices_table.setItem(row, 4, QTableWidgetItem(f"£{outstanding:.2f}"))
+            
+            self.invoices_table.setItem(row, 5, QTableWidgetItem(invoice.get('status', '')))
+        
+        # Resize columns
+        self.invoices_table.resizeColumnsToContents()
+    
+    def load_payments(self, payments: List[Dict[str, any]]):
+        """Load payments into the payments table."""
+        self.payments_table.setRowCount(len(payments))
+        
+        for row, payment in enumerate(payments):
+            payment_id = payment['id']
+            # Store payment ID in first item's user data
+            date_item = QTableWidgetItem(payment.get('payment_date', ''))
+            date_item.setData(Qt.ItemDataRole.UserRole, payment_id)
+            self.payments_table.setItem(row, 0, date_item)
+            
+            self.payments_table.setItem(row, 1, QTableWidgetItem(f"£{payment.get('amount', 0.0):.2f}"))
+            
+            # Since payments are now supplier-specific, we don't need to show supplier name
+            # But we'll keep the column for consistency (or remove it if preferred)
+            # For now, we'll show the selected supplier's name or leave it empty
+            supplier_name = ""
+            if self.selected_supplier_id and self.supplier_model and hasattr(self, '_current_user_id'):
+                supplier_data = self.supplier_model.get_by_id(self.selected_supplier_id, self._current_user_id)
+                if supplier_data:
+                    supplier_name = supplier_data.get('name', '')
+            self.payments_table.setItem(row, 2, QTableWidgetItem(supplier_name))
+            
+            self.payments_table.setItem(row, 3, QTableWidgetItem(payment.get('payment_method', 'Cash')))
+            self.payments_table.setItem(row, 4, QTableWidgetItem(payment.get('reference', '')))
+            
+            # Calculate unallocated amount
+            unallocated = payment.get('amount', 0.0)
+            if self.payment_controller:
+                unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
+            self.payments_table.setItem(row, 5, QTableWidgetItem(f"£{unallocated:.2f}"))
+        
+        # Resize columns
+        self.payments_table.resizeColumnsToContents()
     
     def show_success(self, message: str):
         """Display a success message."""

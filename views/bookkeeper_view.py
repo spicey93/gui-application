@@ -1,14 +1,13 @@
 """Book Keeper view GUI."""
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
-    QPushButton, QFrame, QTableWidget, QTableWidgetItem,
+    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
     QDialog, QLineEdit, QComboBox, QMessageBox, QHeaderView,
-    QDateEdit, QDoubleSpinBox, QCheckBox, QTabWidget
+    QDateEdit, QDoubleSpinBox, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, QEvent, QDate
-from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
+from PySide6.QtGui import QKeyEvent
 from typing import List, Dict, Optional, Callable
-from views.navigation_panel import NavigationPanel
+from views.base_view import BaseTabbedView
 from datetime import date
 
 
@@ -30,16 +29,10 @@ class AccountsTableWidget(QTableWidget):
         super().keyPressEvent(event)
 
 
-class BookkeeperView(QWidget):
+class BookkeeperView(BaseTabbedView):
     """Book Keeper management GUI."""
     
-    # Signals
-    dashboard_requested = Signal()
-    suppliers_requested = Signal()
-    products_requested = Signal()
-    inventory_requested = Signal()
-    configuration_requested = Signal()
-    logout_requested = Signal()
+    # Additional signals beyond base class
     create_account_requested = Signal(int, str, str, float, bool)
     update_account_requested = Signal(int, int, str, str, float, bool)
     delete_account_requested = Signal(int)
@@ -49,7 +42,7 @@ class BookkeeperView(QWidget):
     
     def __init__(self):
         """Initialize the bookkeeper view."""
-        super().__init__()
+        super().__init__(title="Book Keeper", current_view="bookkeeper")
         self.selected_account_id: Optional[int] = None
         self._transfer_dialog = None  # Store reference to transfer dialog
         self._create_widgets()
@@ -57,57 +50,21 @@ class BookkeeperView(QWidget):
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
-        main_layout = QHBoxLayout(self)
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        # Add action buttons using base class method
+        self.add_account_button = self.add_action_button(
+            "Add Account (Ctrl+N)", 
+            self._handle_add_account,
+            "Ctrl+N"
+        )
         
-        # Navigation panel (left sidebar)
-        self.nav_panel = NavigationPanel(current_view="bookkeeper")
-        self.nav_panel.dashboard_requested.connect(self._handle_dashboard)
-        self.nav_panel.suppliers_requested.connect(self._handle_suppliers)
-        self.nav_panel.products_requested.connect(self._handle_products)
-        self.nav_panel.inventory_requested.connect(self._handle_inventory)
-        self.nav_panel.configuration_requested.connect(self._handle_configuration)
-        self.nav_panel.logout_requested.connect(self._handle_logout)
+        self.transfer_button = self.add_action_button(
+            "Transfer Funds (Ctrl+T)",
+            self._handle_transfer_funds,
+            "Ctrl+T"
+        )
         
-        # Add navigation panel to main layout
-        main_layout.addWidget(self.nav_panel)
-        
-        # Content area (right side)
-        content_frame = QWidget()
-        content_layout = QVBoxLayout(content_frame)
-        content_layout.setSpacing(20)
-        content_layout.setContentsMargins(40, 40, 40, 40)
-        
-        # Title and buttons at the top
-        title_layout = QHBoxLayout()
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        
-        title_label = QLabel("Book Keeper")
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-        title_layout.addWidget(title_label)
-        
-        title_layout.addStretch()
-        
-        self.add_account_button = QPushButton("Add Account (Ctrl+N)")
-        self.add_account_button.setMinimumWidth(180)
-        self.add_account_button.setMinimumHeight(30)
-        self.add_account_button.clicked.connect(self._handle_add_account)
-        title_layout.addWidget(self.add_account_button)
-        
-        self.transfer_button = QPushButton("Transfer Funds (Ctrl+T)")
-        self.transfer_button.setMinimumWidth(180)
-        self.transfer_button.setMinimumHeight(30)
-        self.transfer_button.clicked.connect(self._handle_transfer_funds)
-        title_layout.addWidget(self.transfer_button)
-        
-        content_layout.addLayout(title_layout)
-        
-        # Tabs widget below title and buttons
-        self.tab_widget = QTabWidget()
-        # Align tabs to the left
-        self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
-        self.tab_widget.setElideMode(Qt.TextElideMode.ElideNone)
+        # Create tabs widget
+        self.tab_widget = self.create_tabs()
         
         # Tab 1: Chart of Accounts
         accounts_widget = QWidget()
@@ -116,7 +73,7 @@ class BookkeeperView(QWidget):
         accounts_layout.setContentsMargins(0, 0, 0, 0)
         
         # Accounts table
-        self.accounts_table = AccountsTableWidget(self._open_selected_account)
+        self.accounts_table = AccountsTableWidget(self._switch_to_activity_tab)
         self.accounts_table.setColumnCount(5)
         self.accounts_table.setHorizontalHeaderLabels(["Code", "Name", "Type", "Balance", "Bank"])
         self.accounts_table.horizontalHeader().setStretchLastSection(True)
@@ -144,7 +101,7 @@ class BookkeeperView(QWidget):
         
         accounts_layout.addWidget(self.accounts_table)
         
-        self.tab_widget.addTab(accounts_widget, "Chart of Accounts (Ctrl+1)")
+        self.add_tab(accounts_widget, "Chart of Accounts (Ctrl+1)", "Ctrl+1")
         
         # Tab 2: Account Activity
         activity_widget = QWidget()
@@ -171,16 +128,10 @@ class BookkeeperView(QWidget):
         
         activity_layout.addWidget(self.activity_table)
         
-        self.tab_widget.addTab(activity_widget, "Account Activity (Ctrl+2)")
+        self.add_tab(activity_widget, "Account Activity (Ctrl+2)", "Ctrl+2")
         
         # Set Chart of Accounts tab as the default (first tab)
         self.tab_widget.setCurrentIndex(0)
-        
-        # Add tabs to content layout
-        content_layout.addWidget(self.tab_widget, stretch=1)
-        
-        # Add content area to main layout
-        main_layout.addWidget(content_frame, stretch=1)
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
@@ -191,19 +142,6 @@ class BookkeeperView(QWidget):
         
         # Arrow keys work automatically in QTableWidget
         self.accounts_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
-        # Tab shortcuts
-        # Ctrl+1: Chart of Accounts
-        self.shortcut_tab1 = QShortcut(QKeySequence("Ctrl+1"), self)
-        self.shortcut_tab1.activated.connect(lambda: self.tab_widget.setCurrentIndex(0))
-        
-        # Ctrl+2: Account Activity
-        self.shortcut_tab2 = QShortcut(QKeySequence("Ctrl+2"), self)
-        self.shortcut_tab2.activated.connect(lambda: self.tab_widget.setCurrentIndex(1))
-        
-        # Ctrl+T: Transfer Funds
-        self.shortcut_transfer = QShortcut(QKeySequence("Ctrl+T"), self)
-        self.shortcut_transfer.activated.connect(self._handle_transfer_funds)
     
     def showEvent(self, event: QEvent):
         """Handle show event - set focus to table if it has data."""
@@ -216,30 +154,6 @@ class BookkeeperView(QWidget):
             # Ensure first row is selected if nothing is selected
             if not self.accounts_table.selectedItems():
                 self.accounts_table.selectRow(0)
-    
-    def _handle_dashboard(self):
-        """Handle dashboard button click."""
-        self.dashboard_requested.emit()
-    
-    def _handle_suppliers(self):
-        """Handle suppliers button click."""
-        self.suppliers_requested.emit()
-    
-    def _handle_products(self):
-        """Handle products button click."""
-        self.products_requested.emit()
-    
-    def _handle_inventory(self):
-        """Handle inventory button click."""
-        self.inventory_requested.emit()
-    
-    def _handle_configuration(self):
-        """Handle configuration button click."""
-        self.configuration_requested.emit()
-    
-    def _handle_logout(self):
-        """Handle logout button click."""
-        self.logout_requested.emit()
     
     def _handle_add_account(self):
         """Handle Add Account button click."""
@@ -254,7 +168,7 @@ class BookkeeperView(QWidget):
         self._open_selected_account()
     
     def _on_account_selection_changed(self):
-        """Handle account selection change - refresh activity panel and switch to activity tab."""
+        """Handle account selection change - update selected account ID only (don't switch tabs)."""
         selected_items = self.accounts_table.selectedItems()
         if selected_items:
             row = selected_items[0].row()
@@ -264,12 +178,28 @@ class BookkeeperView(QWidget):
                 account_id = account_id_item.data(Qt.ItemDataRole.UserRole)
                 if account_id:
                     self.selected_account_id = account_id
-                    self.refresh_requested.emit()
-                    # Switch to activity tab when account is selected
-                    self.tab_widget.setCurrentIndex(1)
+                    # Only refresh if we're already on the activity tab
+                    if self.tab_widget.currentIndex() == 1:
+                        self.refresh_requested.emit()
+    
+    def _switch_to_activity_tab(self):
+        """Switch to activity tab for the currently selected account (called by Enter key)."""
+        selected_items = self.accounts_table.selectedItems()
+        if not selected_items:
+            return
+        
+        row = selected_items[0].row()
+        account_id_item = self.accounts_table.item(row, 0)
+        if account_id_item:
+            account_id = account_id_item.data(Qt.ItemDataRole.UserRole)
+            if account_id:
+                self.selected_account_id = account_id
+                # Switch to activity tab and refresh
+                self.tab_widget.setCurrentIndex(1)
+                self.refresh_requested.emit()
     
     def _open_selected_account(self):
-        """Open details for the currently selected account."""
+        """Open details dialog for the currently selected account (called by double-click)."""
         selected_items = self.accounts_table.selectedItems()
         if not selected_items:
             return

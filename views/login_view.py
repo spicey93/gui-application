@@ -1,4 +1,6 @@
 """Login view GUI."""
+import os
+from pathlib import Path
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QMessageBox
@@ -66,8 +68,41 @@ class LoginView(QWidget):
         layout.addLayout(button_layout)
         layout.addStretch()
         
-        # Set focus to username entry
-        self.username_entry.setFocus()
+        # Autofill in dev mode
+        if self._is_dev_mode():
+            self.username_entry.setText("user1")
+            self.password_entry.setText("password1")
+            # Set focus to password entry so user can just press Enter
+            self.password_entry.setFocus()
+        else:
+            # Set focus to username entry
+            self.username_entry.setFocus()
+    
+    def _is_dev_mode(self) -> bool:
+        """Check if running in development mode."""
+        # First check environment variable
+        env_value = os.getenv("DEV_MODE", "")
+        if env_value.lower() in ("1", "true", "yes"):
+            return True
+        
+        # Then check .env file
+        env_file = Path(__file__).parent.parent / ".env"
+        if env_file.exists():
+            try:
+                with open(env_file, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            if "=" in line:
+                                key, value = line.split("=", 1)
+                                key = key.strip()
+                                value = value.strip().strip('"').strip("'")
+                                if key == "DEV_MODE" and value.lower() in ("1", "true", "yes"):
+                                    return True
+            except Exception:
+                pass
+        
+        return False
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""

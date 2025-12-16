@@ -1,13 +1,12 @@
 """Products view GUI."""
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
-    QPushButton, QFrame, QTableWidget, QTableWidgetItem,
+    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
     QDialog, QLineEdit, QComboBox, QMessageBox, QHeaderView
 )
 from PySide6.QtCore import Qt, Signal, QEvent
-from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
+from PySide6.QtGui import QKeyEvent
 from typing import List, Dict, Optional, Callable
-from views.navigation_panel import NavigationPanel
+from views.base_view import BaseTabbedView
 
 
 class ProductsTableWidget(QTableWidget):
@@ -28,14 +27,10 @@ class ProductsTableWidget(QTableWidget):
         super().keyPressEvent(event)
 
 
-class ProductsView(QWidget):
+class ProductsView(BaseTabbedView):
     """Products management GUI."""
     
-    # Signals
-    dashboard_requested = Signal()
-    suppliers_requested = Signal()
-    configuration_requested = Signal()
-    logout_requested = Signal()
+    # Additional signals beyond base class
     create_requested = Signal(str, str, str)
     update_requested = Signal(int, str, str, str)
     delete_requested = Signal(int)
@@ -44,51 +39,22 @@ class ProductsView(QWidget):
     
     def __init__(self):
         """Initialize the products view."""
-        super().__init__()
+        super().__init__(title="Products", current_view="products")
         self.available_types = []  # Store available product types
         self._create_widgets()
         self._setup_keyboard_navigation()
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
-        main_layout = QHBoxLayout(self)
-        main_layout.setSpacing(0)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        # Add action button using base class method
+        self.add_product_button = self.add_action_button(
+            "Add Product (Ctrl+N)",
+            self._handle_add_product,
+            "Ctrl+N"
+        )
         
-        # Navigation panel (left sidebar)
-        self.nav_panel = NavigationPanel(current_view="products")
-        self.nav_panel.dashboard_requested.connect(self._handle_dashboard)
-        self.nav_panel.suppliers_requested.connect(self._handle_suppliers)
-        self.nav_panel.products_requested.connect(self._handle_products)
-        self.nav_panel.configuration_requested.connect(self._handle_configuration)
-        self.nav_panel.logout_requested.connect(self._handle_logout)
-        
-        # Add navigation panel to main layout
-        main_layout.addWidget(self.nav_panel)
-        
-        # Content area (right side)
-        content_frame = QWidget()
-        content_layout = QVBoxLayout(content_frame)
-        content_layout.setSpacing(20)
-        content_layout.setContentsMargins(40, 40, 40, 40)
-        
-        # Title and Add Product button
-        title_layout = QHBoxLayout()
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        
-        title_label = QLabel("Products")
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-        title_layout.addWidget(title_label)
-        
-        title_layout.addStretch()
-        
-        self.add_product_button = QPushButton("Add Product (Ctrl+N)")
-        self.add_product_button.setMinimumWidth(180)
-        self.add_product_button.setMinimumHeight(30)
-        self.add_product_button.clicked.connect(self._handle_add_product)
-        title_layout.addWidget(self.add_product_button)
-        
-        content_layout.addLayout(title_layout)
+        # Get content layout to add widgets directly (no tabs needed)
+        content_layout = self.get_content_layout()
         
         # Products table
         self.products_table = ProductsTableWidget(self._open_selected_product)
@@ -112,10 +78,7 @@ class ProductsView(QWidget):
         # Double-click to edit
         self.products_table.itemDoubleClicked.connect(self._on_table_double_click)
         
-        content_layout.addWidget(self.products_table)
-        
-        # Add content area to main layout
-        main_layout.addWidget(content_frame, stretch=1)
+        content_layout.addWidget(self.products_table, stretch=1)
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
@@ -136,27 +99,6 @@ class ProductsView(QWidget):
             # Ensure first row is selected if nothing is selected
             if not self.products_table.selectedItems():
                 self.products_table.selectRow(0)
-    
-    def _handle_dashboard(self):
-        """Handle dashboard button click."""
-        self.dashboard_requested.emit()
-    
-    def _handle_suppliers(self):
-        """Handle suppliers button click."""
-        self.suppliers_requested.emit()
-    
-    def _handle_products(self):
-        """Handle products button click."""
-        # Already on products page
-        pass
-    
-    def _handle_configuration(self):
-        """Handle configuration button click."""
-        self.configuration_requested.emit()
-    
-    def _handle_logout(self):
-        """Handle logout button click."""
-        self.logout_requested.emit()
     
     def _handle_add_product(self):
         """Handle Add Product button click."""

@@ -389,11 +389,10 @@ class Application(QMainWindow):
             self.configuration_controller.products_requested.connect(self.on_products)
             self.configuration_controller.logout_requested.connect(self.on_logout)
         
-        # Update window for dashboard
+        # Update window for dashboard - maximize to full screen
         self.setWindowTitle("Dashboard")
         self.setMinimumSize(800, 600)
-        self.resize(1200, 800)
-        self._center_window()
+        self.showMaximized()
         
         # Update navigation highlighting
         self.dashboard_view.nav_panel.set_current_view("dashboard")

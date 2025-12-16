@@ -30,7 +30,7 @@ class NavigationPanel(QFrame):
     def _create_widgets(self):
         """Create and layout UI widgets."""
         self.setObjectName("navPanel")
-        self.setFixedWidth(180)
+        self.setFixedWidth(240)
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setFrameShadow(QFrame.Shadow.Raised)
         
