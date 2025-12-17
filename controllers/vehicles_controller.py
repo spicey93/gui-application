@@ -61,11 +61,12 @@ class VehiclesController(QObject):
         self.refresh_vehicles()
     
     def refresh_vehicles(self) -> None:
-        """Refresh the vehicles list."""
+        """Refresh the vehicles list and focus VRM input."""
         if self.user_id is None:
             return
         vehicles = self.vehicle_model.get_all_vehicles(self.user_id)
         self.vehicles_view.populate_vehicles(vehicles)
+        self.vehicles_view.focus_vrm_input()
     
     def handle_vehicle_lookup(self, vrm: str) -> None:
         """Handle vehicle lookup request - check database first."""

@@ -15,6 +15,11 @@ class Vehicle:
         self._ensure_db_directory()
         self._init_database()
     
+    @staticmethod
+    def normalize_vrm(vrm: str) -> str:
+        """Normalize VRM to uppercase with no spaces."""
+        return vrm.upper().replace(" ", "").strip()
+    
     def _ensure_db_directory(self) -> None:
         """Ensure the database directory exists."""
         db_dir = os.path.dirname(self.db_path)
@@ -62,7 +67,7 @@ class Vehicle:
         if not vrm:
             return False, "VRM is required", None
         
-        vrm = vrm.upper().strip()
+        vrm = self.normalize_vrm(vrm)
         now = datetime.now().isoformat()
         
         try:
@@ -101,7 +106,7 @@ class Vehicle:
     
     def get_vehicle_by_vrm(self, user_id: int, vrm: str) -> Optional[Dict[str, Any]]:
         """Get a vehicle by VRM."""
-        vrm = vrm.upper().strip()
+        vrm = self.normalize_vrm(vrm)
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row

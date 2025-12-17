@@ -78,6 +78,7 @@ class VehiclesView(BaseTabbedView):
         )
         self.vehicles_table.setAlternatingRowColors(True)
         self.vehicles_table.doubleClicked.connect(self._on_vehicle_double_clicked)
+        self.vehicles_table.activated.connect(self._on_vehicle_double_clicked)
         
         layout.addWidget(self.vehicles_table)
         
@@ -178,10 +179,6 @@ class VehiclesView(BaseTabbedView):
         """Set up keyboard navigation."""
         delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
         delete_shortcut.activated.connect(self._on_delete_clicked)
-        
-        # Enter to view details when table focused
-        enter_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Return), self.vehicles_table)
-        enter_shortcut.activated.connect(self._on_view_details)
     
     def _on_lookup_clicked(self) -> None:
         """Handle lookup button click."""
@@ -242,6 +239,15 @@ class VehiclesView(BaseTabbedView):
             )
             updated = vehicle.get('updated_at', '')[:10] if vehicle.get('updated_at') else ''
             self.vehicles_table.setItem(row, 4, QTableWidgetItem(updated))
+        
+        # Select first row if there are results
+        if vehicles:
+            self.vehicles_table.selectRow(0)
+    
+    def focus_vrm_input(self) -> None:
+        """Focus the VRM input field."""
+        self.vrm_input.setFocus()
+        self.vrm_input.selectAll()
     
     def show_vehicle_details(self, vehicle: Dict[str, Any]) -> None:
         """Display vehicle details in the details tab."""
