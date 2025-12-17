@@ -15,6 +15,10 @@ class SuppliersController(QObject):
     
     # Signals
     dashboard_requested = Signal()
+    customers_requested = Signal()
+    products_requested = Signal()
+    inventory_requested = Signal()
+    bookkeeper_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     balance_changed = Signal()  # Emitted when invoices/payments change
@@ -34,6 +38,10 @@ class SuppliersController(QObject):
         
         # Connect view signals to controller handlers
         self.suppliers_view.dashboard_requested.connect(self.handle_dashboard)
+        self.suppliers_view.customers_requested.connect(self.handle_customers)
+        self.suppliers_view.products_requested.connect(self.handle_products)
+        self.suppliers_view.inventory_requested.connect(self.handle_inventory)
+        self.suppliers_view.bookkeeper_requested.connect(self.handle_bookkeeper)
         self.suppliers_view.configuration_requested.connect(self.handle_configuration)
         self.suppliers_view.logout_requested.connect(self.handle_logout)
         self.suppliers_view.create_requested.connect(self.handle_create)
@@ -140,6 +148,22 @@ class SuppliersController(QObject):
     def handle_dashboard(self):
         """Handle dashboard navigation."""
         self.dashboard_requested.emit()
+    
+    def handle_customers(self):
+        """Handle customers navigation."""
+        self.customers_requested.emit()
+    
+    def handle_products(self):
+        """Handle products navigation."""
+        self.products_requested.emit()
+    
+    def handle_inventory(self):
+        """Handle inventory navigation."""
+        self.inventory_requested.emit()
+    
+    def handle_bookkeeper(self):
+        """Handle bookkeeper navigation."""
+        self.bookkeeper_requested.emit()
     
     def handle_configuration(self):
         """Handle configuration navigation."""

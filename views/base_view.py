@@ -24,6 +24,7 @@ class BaseTabbedView(QWidget):
     # Standard navigation signals
     dashboard_requested = Signal()
     suppliers_requested = Signal()
+    customers_requested = Signal()
     products_requested = Signal()
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
@@ -55,6 +56,7 @@ class BaseTabbedView(QWidget):
         self.nav_panel = NavigationPanel(current_view=self._current_view)
         self.nav_panel.dashboard_requested.connect(self._handle_dashboard)
         self.nav_panel.suppliers_requested.connect(self._handle_suppliers)
+        self.nav_panel.customers_requested.connect(self._handle_customers)
         self.nav_panel.products_requested.connect(self._handle_products)
         self.nav_panel.inventory_requested.connect(self._handle_inventory)
         self.nav_panel.bookkeeper_requested.connect(self._handle_bookkeeper)
@@ -186,6 +188,10 @@ class BaseTabbedView(QWidget):
     def _handle_suppliers(self):
         """Handle suppliers button click."""
         self.suppliers_requested.emit()
+    
+    def _handle_customers(self):
+        """Handle customers button click."""
+        self.customers_requested.emit()
     
     def _handle_products(self):
         """Handle products button click."""

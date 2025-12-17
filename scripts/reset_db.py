@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.user import User
 from models.supplier import Supplier
+from models.customer import Customer
 from models.product import Product
 from models.product_type import ProductType
 from models.invoice import Invoice
@@ -36,6 +37,7 @@ def reset_database(db_path: str = "data/app.db"):
     print("Initializing database tables...")
     user_model = User(db_path)
     supplier_model = Supplier(db_path)
+    customer_model = Customer(db_path)
     product_model = Product(db_path)
     product_type_model = ProductType(db_path)
     invoice_model = Invoice(db_path)
@@ -49,6 +51,7 @@ def reset_database(db_path: str = "data/app.db"):
     return {
         'user': user_model,
         'supplier': supplier_model,
+        'customer': customer_model,
         'product': product_model,
         'product_type': product_type_model,
         'invoice': invoice_model,
@@ -171,6 +174,18 @@ def seed_user_data(models: dict, username: str, password: str, user_id: int):
             supplier = next((s for s in suppliers if s['account_number'] == account_number), None)
             if supplier:
                 created_suppliers.append(supplier)
+    
+    # Customers
+    print("    Creating customers...")
+    customers_data = [
+        ("John Smith", "07700 900001", "10", "High Street", "London", "Greater London", "SW1A 1AA"),
+        ("Jane Doe", "07700 900002", "25", "Oak Avenue", "Manchester", "Greater Manchester", "M1 2AB"),
+        ("Bob Wilson", "07700 900003", "The Willows", "Church Lane", "Birmingham", "West Midlands", "B1 1AA"),
+        ("Sarah Brown", "07700 900004", "42", "Station Road", "Leeds", "West Yorkshire", "LS1 1AB"),
+        ("Mike Johnson", "07700 900005", "Flat 3", "Park View", "Bristol", "Avon", "BS1 1AA"),
+    ]
+    for name, phone, house, street, city, county, postcode in customers_data:
+        models['customer'].create(name, phone, house, street, city, county, postcode, user_id)
     
     # Products
     print("    Creating products...")

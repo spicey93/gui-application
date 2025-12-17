@@ -42,11 +42,11 @@ class ShortcutsDialog(QDialog):
         
         <b>F1</b> - Navigate to Dashboard<br>
         <b>F2</b> - Navigate to Suppliers<br>
-        <b>F3</b> - Navigate to Products<br>
-        <b>F4</b> - Navigate to Inventory<br>
-        <b>F5</b> - Navigate to Book Keeper<br>
-        <b>F6</b> - Navigate to Configuration<br>
-        <b>F7</b> - Logout<br>
+        <b>F3</b> - Navigate to Customers<br>
+        <b>F4</b> - Navigate to Products<br>
+        <b>F5</b> - Navigate to Inventory<br>
+        <b>F6</b> - Navigate to Book Keeper<br>
+        <b>F7</b> - Navigate to Configuration<br>
         <b>Ctrl+Q</b> - Exit application<br><br>
         
         <b>Standard Navigation:</b><br><br>
@@ -57,23 +57,13 @@ class ShortcutsDialog(QDialog):
         <b>Enter</b> - Activate button or confirm action<br>
         <b>Escape</b> - Cancel dialog or close window<br><br>
         
-        <b>Suppliers View:</b><br><br>
+        <b>Context Actions (Ctrl+N):</b><br><br>
         
-        <b>Ctrl+N</b> - Add new supplier<br>
-        <b>F5</b> - Refresh suppliers list<br>
-        <b>Enter</b> (on selected row) - Open supplier details<br>
-        <b>Double-click</b> (on row) - Open supplier details<br><br>
-        
-        <b>Products View:</b><br><br>
-        
-        <b>Ctrl+N</b> - Add new product<br>
-        <b>F5</b> - Refresh products list<br>
-        <b>Enter</b> (on selected row) - Open product details<br>
-        <b>Double-click</b> (on row) - Open product details<br><br>
+        <b>Ctrl+N</b> - Add new item (supplier/customer/product/account)<br><br>
         
         <b>Forms:</b><br><br>
         
-        <b>Ctrl+Enter</b> - Submit form (login, create supplier/product, etc.)<br>
+        <b>Ctrl+Enter</b> - Submit form<br>
         <b>Enter</b> - Submit form (when button is focused)<br>
         <b>Escape</b> - Cancel form
         """

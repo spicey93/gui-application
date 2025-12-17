@@ -15,6 +15,7 @@ class BookkeeperController(QObject):
     # Signals
     dashboard_requested = Signal()
     suppliers_requested = Signal()
+    customers_requested = Signal()
     products_requested = Signal()
     inventory_requested = Signal()
     configuration_requested = Signal()
@@ -34,6 +35,7 @@ class BookkeeperController(QObject):
         # Connect view signals to controller handlers
         self.bookkeeper_view.dashboard_requested.connect(self.handle_dashboard)
         self.bookkeeper_view.suppliers_requested.connect(self.handle_suppliers)
+        self.bookkeeper_view.customers_requested.connect(self.handle_customers)
         self.bookkeeper_view.products_requested.connect(self.handle_products)
         self.bookkeeper_view.inventory_requested.connect(self.handle_inventory)
         self.bookkeeper_view.configuration_requested.connect(self.handle_configuration)
@@ -180,6 +182,10 @@ class BookkeeperController(QObject):
     def handle_suppliers(self):
         """Handle suppliers navigation."""
         self.suppliers_requested.emit()
+    
+    def handle_customers(self):
+        """Handle customers navigation."""
+        self.customers_requested.emit()
     
     def handle_products(self):
         """Handle products navigation."""

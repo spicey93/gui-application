@@ -9,6 +9,7 @@ from utils.styles import load_theme_stylesheet, apply_theme
 
 from models.user import User
 from models.supplier import Supplier
+from models.customer import Customer
 from models.product import Product
 from models.product_type import ProductType
 from models.invoice import Invoice
@@ -20,6 +21,7 @@ from models.journal_entry import JournalEntry
 from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from views.suppliers_view import SuppliersView
+from views.customers_view import CustomersView
 from views.products_view import ProductsView
 from views.inventory_view import InventoryView
 from views.bookkeeper_view import BookkeeperView
@@ -28,6 +30,7 @@ from views.shortcuts_dialog import ShortcutsDialog
 from controllers.login_controller import LoginController
 from controllers.dashboard_controller import DashboardController
 from controllers.suppliers_controller import SuppliersController
+from controllers.customers_controller import CustomersController
 from controllers.products_controller import ProductsController
 from controllers.inventory_controller import InventoryController
 from controllers.bookkeeper_controller import BookkeeperController
@@ -54,6 +57,7 @@ class Application(QMainWindow):
         # Initialize models
         self.user_model = User()
         self.supplier_model = Supplier()
+        self.customer_model = Customer()
         self.product_model = Product()
         self.product_type_model = ProductType()
         self.invoice_model = Invoice()
@@ -74,6 +78,7 @@ class Application(QMainWindow):
         self.login_view = LoginView()
         self.dashboard_view = DashboardView()
         self.suppliers_view = SuppliersView()
+        self.customers_view = CustomersView()
         self.products_view = ProductsView()
         self.inventory_view = InventoryView()
         self.bookkeeper_view = BookkeeperView()
@@ -83,6 +88,7 @@ class Application(QMainWindow):
         self.login_index = self.stacked_widget.addWidget(self.login_view)
         self.dashboard_index = self.stacked_widget.addWidget(self.dashboard_view)
         self.suppliers_index = self.stacked_widget.addWidget(self.suppliers_view)
+        self.customers_index = self.stacked_widget.addWidget(self.customers_view)
         self.products_index = self.stacked_widget.addWidget(self.products_view)
         self.inventory_index = self.stacked_widget.addWidget(self.inventory_view)
         self.bookkeeper_index = self.stacked_widget.addWidget(self.bookkeeper_view)
@@ -95,6 +101,7 @@ class Application(QMainWindow):
         self.login_controller = LoginController(self.user_model, self.login_view)
         self.dashboard_controller = DashboardController(self.dashboard_view)
         self.suppliers_controller = None
+        self.customers_controller = None
         self.products_controller = None
         self.inventory_controller = None
         self.bookkeeper_controller = None
@@ -106,6 +113,7 @@ class Application(QMainWindow):
         self.login_controller.login_success.connect(self.on_login_success)
         self.dashboard_controller.logout_requested.connect(self.on_logout)
         self.dashboard_controller.suppliers_requested.connect(self.on_suppliers)
+        self.dashboard_controller.customers_requested.connect(self.on_customers)
         self.dashboard_controller.products_requested.connect(self.on_products)
         self.dashboard_controller.inventory_requested.connect(self.on_inventory)
         self.dashboard_controller.bookkeeper_requested.connect(self.on_bookkeeper)
@@ -140,30 +148,30 @@ class Application(QMainWindow):
         self.shortcut_suppliers.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_suppliers.activated.connect(self._navigate_to_suppliers)
         
-        # F3: Products
-        self.shortcut_products = QShortcut(QKeySequence("F3"), self)
+        # F3: Customers
+        self.shortcut_customers = QShortcut(QKeySequence("F3"), self)
+        self.shortcut_customers.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.shortcut_customers.activated.connect(self._navigate_to_customers)
+        
+        # F4: Products
+        self.shortcut_products = QShortcut(QKeySequence("F4"), self)
         self.shortcut_products.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_products.activated.connect(self._navigate_to_products)
         
-        # F4: Inventory
-        self.shortcut_inventory = QShortcut(QKeySequence("F4"), self)
+        # F5: Inventory
+        self.shortcut_inventory = QShortcut(QKeySequence("F5"), self)
         self.shortcut_inventory.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_inventory.activated.connect(self._navigate_to_inventory)
         
-        # F5: Book Keeper
-        self.shortcut_bookkeeper = QShortcut(QKeySequence("F5"), self)
+        # F6: Book Keeper
+        self.shortcut_bookkeeper = QShortcut(QKeySequence("F6"), self)
         self.shortcut_bookkeeper.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_bookkeeper.activated.connect(self._navigate_to_bookkeeper)
         
-        # F6: Configuration
-        self.shortcut_configuration = QShortcut(QKeySequence("F6"), self)
+        # F7: Configuration
+        self.shortcut_configuration = QShortcut(QKeySequence("F7"), self)
         self.shortcut_configuration.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_configuration.activated.connect(self._navigate_to_configuration)
-        
-        # F7: Logout
-        self.shortcut_logout = QShortcut(QKeySequence("F7"), self)
-        self.shortcut_logout.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.shortcut_logout.activated.connect(self._handle_logout_shortcut)
         
         # Ctrl+N: Add Supplier/Product/Account (context-dependent)
         self.shortcut_add = QShortcut(QKeySequence("Ctrl+N"), self)
@@ -175,15 +183,6 @@ class Application(QMainWindow):
         self.shortcut_transfer.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_transfer.activated.connect(self._handle_transfer_shortcut)
         
-        # F8: Refresh (context-dependent)
-        self.shortcut_refresh = QShortcut(QKeySequence("F8"), self)
-        self.shortcut_refresh.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.shortcut_refresh.activated.connect(self._handle_refresh_shortcut)
-        
-        # F9: Show keyboard shortcuts help
-        self.shortcut_help = QShortcut(QKeySequence("F9"), self)
-        self.shortcut_help.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.shortcut_help.activated.connect(self._show_shortcuts_help)
         
         # Ctrl+Q: Exit application
         self.shortcut_quit = QShortcut(QKeySequence("Ctrl+Q"), self)
@@ -197,7 +196,6 @@ class Application(QMainWindow):
             self.stacked_widget.setCurrentIndex(self.dashboard_index)
             self.setWindowTitle("Dashboard")
             self.setMinimumSize(800, 600)
-            self._center_window()
     
     def _navigate_to_suppliers(self):
         """Navigate to suppliers if logged in."""
@@ -208,7 +206,16 @@ class Application(QMainWindow):
             self.stacked_widget.setCurrentIndex(self.suppliers_index)
             self.setWindowTitle("Suppliers")
             self.setMinimumSize(800, 600)
-            self._center_window()
+    
+    def _navigate_to_customers(self):
+        """Navigate to customers if logged in."""
+        if self.current_user_id is not None:
+            if self.customers_controller:
+                self.customers_controller.refresh_customers()
+            self.customers_view.nav_panel.set_current_view("customers")
+            self.stacked_widget.setCurrentIndex(self.customers_index)
+            self.setWindowTitle("Customers")
+            self.setMinimumSize(800, 600)
     
     def _navigate_to_products(self):
         """Navigate to products if logged in."""
@@ -219,7 +226,6 @@ class Application(QMainWindow):
             self.stacked_widget.setCurrentIndex(self.products_index)
             self.setWindowTitle("Products")
             self.setMinimumSize(800, 600)
-            self._center_window()
     
     def _navigate_to_inventory(self):
         """Navigate to inventory if logged in."""
@@ -230,7 +236,6 @@ class Application(QMainWindow):
             self.stacked_widget.setCurrentIndex(self.inventory_index)
             self.setWindowTitle("Inventory")
             self.setMinimumSize(800, 600)
-            self._center_window()
     
     def _navigate_to_bookkeeper(self):
         """Navigate to bookkeeper if logged in."""
@@ -241,7 +246,6 @@ class Application(QMainWindow):
             self.stacked_widget.setCurrentIndex(self.bookkeeper_index)
             self.setWindowTitle("Book Keeper")
             self.setMinimumSize(800, 600)
-            self._center_window()
     
     def _navigate_to_configuration(self):
         """Navigate to configuration if logged in."""
@@ -250,19 +254,15 @@ class Application(QMainWindow):
             self.stacked_widget.setCurrentIndex(self.configuration_index)
             self.setWindowTitle("Configuration")
             self.setMinimumSize(800, 600)
-            self._center_window()
-    
-    def _handle_logout_shortcut(self):
-        """Handle logout keyboard shortcut."""
-        if self.current_user_id is not None:
-            self.on_logout()
     
     def _handle_add_shortcut(self):
-        """Handle add item keyboard shortcut (supplier, product, or account)."""
+        """Handle add item keyboard shortcut (supplier, customer, product, or account)."""
         if self.current_user_id is not None:
             current_index = self.stacked_widget.currentIndex()
             if current_index == self.suppliers_index:
                 self.suppliers_view.add_supplier()
+            elif current_index == self.customers_index:
+                self.customers_view.add_customer()
             elif current_index == self.products_index:
                 self.products_view.add_product()
             elif current_index == self.bookkeeper_index:
@@ -274,29 +274,6 @@ class Application(QMainWindow):
             current_index = self.stacked_widget.currentIndex()
             if current_index == self.bookkeeper_index:
                 self.bookkeeper_view.transfer_funds()
-    
-    def _handle_refresh_shortcut(self):
-        """Handle refresh keyboard shortcut."""
-        if self.current_user_id is not None:
-            current_index = self.stacked_widget.currentIndex()
-            if current_index == self.suppliers_index:
-                if self.suppliers_controller:
-                    self.suppliers_controller.refresh_suppliers()
-            elif current_index == self.products_index:
-                if self.products_controller:
-                    self.products_controller.refresh_products()
-            elif current_index == self.inventory_index:
-                if self.inventory_controller:
-                    self.inventory_controller.refresh_inventory()
-            elif current_index == self.bookkeeper_index:
-                if self.bookkeeper_controller:
-                    self.bookkeeper_controller.refresh_accounts()
-    
-    def _show_shortcuts_help(self):
-        """Show keyboard shortcuts help dialog."""
-        if self.current_user_id is not None:
-            dialog = ShortcutsDialog(self)
-            dialog.exec()
     
     def _exit_application(self):
         """Exit the application with confirmation."""
@@ -347,10 +324,31 @@ class Application(QMainWindow):
                 self.product_model
             )
             self.suppliers_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.suppliers_controller.customers_requested.connect(self.on_customers)
+            self.suppliers_controller.products_requested.connect(self.on_products)
+            self.suppliers_controller.inventory_requested.connect(self.on_inventory)
+            self.suppliers_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.suppliers_controller.configuration_requested.connect(self.on_configuration)
             self.suppliers_controller.logout_requested.connect(self.on_logout)
         else:
             self.suppliers_controller.set_user_id(user_id)
+        
+        # Initialize or update customers controller with user_id
+        if self.customers_controller is None:
+            self.customers_controller = CustomersController(
+                self.customers_view,
+                self.customer_model,
+                user_id
+            )
+            self.customers_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.customers_controller.suppliers_requested.connect(self.on_suppliers)
+            self.customers_controller.products_requested.connect(self.on_products)
+            self.customers_controller.inventory_requested.connect(self.on_inventory)
+            self.customers_controller.bookkeeper_requested.connect(self.on_bookkeeper)
+            self.customers_controller.configuration_requested.connect(self.on_configuration)
+            self.customers_controller.logout_requested.connect(self.on_logout)
+        else:
+            self.customers_controller.set_user_id(user_id)
         
         # Initialize or update products controller with user_id
         if self.products_controller is None:
@@ -362,6 +360,9 @@ class Application(QMainWindow):
             )
             self.products_controller.dashboard_requested.connect(self.on_back_to_dashboard)
             self.products_controller.suppliers_requested.connect(self.on_suppliers)
+            self.products_controller.customers_requested.connect(self.on_customers)
+            self.products_controller.inventory_requested.connect(self.on_inventory)
+            self.products_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.products_controller.configuration_requested.connect(self.on_configuration)
             self.products_controller.logout_requested.connect(self.on_logout)
         else:
@@ -376,7 +377,9 @@ class Application(QMainWindow):
             )
             self.inventory_controller.dashboard_requested.connect(self.on_back_to_dashboard)
             self.inventory_controller.suppliers_requested.connect(self.on_suppliers)
+            self.inventory_controller.customers_requested.connect(self.on_customers)
             self.inventory_controller.products_requested.connect(self.on_products)
+            self.inventory_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.inventory_controller.configuration_requested.connect(self.on_configuration)
             self.inventory_controller.logout_requested.connect(self.on_logout)
         else:
@@ -392,6 +395,7 @@ class Application(QMainWindow):
             )
             self.bookkeeper_controller.dashboard_requested.connect(self.on_back_to_dashboard)
             self.bookkeeper_controller.suppliers_requested.connect(self.on_suppliers)
+            self.bookkeeper_controller.customers_requested.connect(self.on_customers)
             self.bookkeeper_controller.products_requested.connect(self.on_products)
             self.bookkeeper_controller.inventory_requested.connect(self.on_inventory)
             self.bookkeeper_controller.configuration_requested.connect(self.on_configuration)
@@ -407,7 +411,10 @@ class Application(QMainWindow):
             )
             self.configuration_controller.dashboard_requested.connect(self.on_back_to_dashboard)
             self.configuration_controller.suppliers_requested.connect(self.on_suppliers)
+            self.configuration_controller.customers_requested.connect(self.on_customers)
             self.configuration_controller.products_requested.connect(self.on_products)
+            self.configuration_controller.inventory_requested.connect(self.on_inventory)
+            self.configuration_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.configuration_controller.logout_requested.connect(self.on_logout)
         
         # Update window for dashboard - maximize to full screen
@@ -432,7 +439,18 @@ class Application(QMainWindow):
         self.stacked_widget.setCurrentIndex(self.suppliers_index)
         self.setWindowTitle("Suppliers")
         self.setMinimumSize(800, 600)
-        self._center_window()
+    
+    def on_customers(self):
+        """Handle navigation to customers."""
+        # Refresh customers for current user
+        if self.customers_controller:
+            self.customers_controller.refresh_customers()
+        # Update navigation highlighting
+        self.customers_view.nav_panel.set_current_view("customers")
+        # Switch to customers view
+        self.stacked_widget.setCurrentIndex(self.customers_index)
+        self.setWindowTitle("Customers")
+        self.setMinimumSize(800, 600)
     
     def on_products(self):
         """Handle navigation to products."""
@@ -445,7 +463,6 @@ class Application(QMainWindow):
         self.stacked_widget.setCurrentIndex(self.products_index)
         self.setWindowTitle("Products")
         self.setMinimumSize(800, 600)
-        self._center_window()
     
     def on_inventory(self):
         """Handle navigation to inventory."""
@@ -458,7 +475,6 @@ class Application(QMainWindow):
         self.stacked_widget.setCurrentIndex(self.inventory_index)
         self.setWindowTitle("Inventory")
         self.setMinimumSize(800, 600)
-        self._center_window()
     
     def on_bookkeeper(self):
         """Handle navigation to bookkeeper."""
@@ -471,7 +487,6 @@ class Application(QMainWindow):
         self.stacked_widget.setCurrentIndex(self.bookkeeper_index)
         self.setWindowTitle("Book Keeper")
         self.setMinimumSize(800, 600)
-        self._center_window()
     
     def on_configuration(self):
         """Handle navigation to configuration."""
@@ -481,7 +496,6 @@ class Application(QMainWindow):
         self.stacked_widget.setCurrentIndex(self.configuration_index)
         self.setWindowTitle("Configuration")
         self.setMinimumSize(800, 600)
-        self._center_window()
     
     def _refresh_product_types_after_change(self):
         """Refresh product types in products view after configuration changes."""
@@ -497,7 +511,6 @@ class Application(QMainWindow):
         self.stacked_widget.setCurrentIndex(self.dashboard_index)
         self.setWindowTitle("Dashboard")
         self.setMinimumSize(800, 600)
-        self._center_window()
     
     def on_logout(self):
         """Handle logout."""

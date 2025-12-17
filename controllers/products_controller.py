@@ -14,6 +14,9 @@ class ProductsController(QObject):
     # Signals
     dashboard_requested = Signal()
     suppliers_requested = Signal()
+    customers_requested = Signal()
+    inventory_requested = Signal()
+    bookkeeper_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -28,6 +31,9 @@ class ProductsController(QObject):
         # Connect view signals to controller handlers
         self.products_view.dashboard_requested.connect(self.handle_dashboard)
         self.products_view.suppliers_requested.connect(self.handle_suppliers)
+        self.products_view.customers_requested.connect(self.handle_customers)
+        self.products_view.inventory_requested.connect(self.handle_inventory)
+        self.products_view.bookkeeper_requested.connect(self.handle_bookkeeper)
         self.products_view.configuration_requested.connect(self.handle_configuration)
         self.products_view.logout_requested.connect(self.handle_logout)
         self.products_view.create_requested.connect(self.handle_create)
@@ -144,6 +150,18 @@ class ProductsController(QObject):
     def handle_suppliers(self):
         """Handle suppliers navigation."""
         self.suppliers_requested.emit()
+    
+    def handle_customers(self):
+        """Handle customers navigation."""
+        self.customers_requested.emit()
+    
+    def handle_inventory(self):
+        """Handle inventory navigation."""
+        self.inventory_requested.emit()
+    
+    def handle_bookkeeper(self):
+        """Handle bookkeeper navigation."""
+        self.bookkeeper_requested.emit()
     
     def handle_configuration(self):
         """Handle configuration navigation."""
