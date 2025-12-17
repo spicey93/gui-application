@@ -28,6 +28,7 @@ class BaseTabbedView(QWidget):
     products_requested = Signal()
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
+    vehicles_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -60,6 +61,7 @@ class BaseTabbedView(QWidget):
         self.nav_panel.products_requested.connect(self._handle_products)
         self.nav_panel.inventory_requested.connect(self._handle_inventory)
         self.nav_panel.bookkeeper_requested.connect(self._handle_bookkeeper)
+        self.nav_panel.vehicles_requested.connect(self._handle_vehicles)
         self.nav_panel.configuration_requested.connect(self._handle_configuration)
         self.nav_panel.logout_requested.connect(self._handle_logout)
         
@@ -204,6 +206,10 @@ class BaseTabbedView(QWidget):
     def _handle_bookkeeper(self):
         """Handle bookkeeper button click."""
         self.bookkeeper_requested.emit()
+    
+    def _handle_vehicles(self):
+        """Handle vehicles button click."""
+        self.vehicles_requested.emit()
     
     def _handle_configuration(self):
         """Handle configuration button click."""

@@ -16,6 +16,7 @@ class InventoryController(QObject):
     customers_requested = Signal()
     products_requested = Signal()
     bookkeeper_requested = Signal()
+    vehicles_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -32,6 +33,7 @@ class InventoryController(QObject):
         self.inventory_view.customers_requested.connect(self.handle_customers)
         self.inventory_view.products_requested.connect(self.handle_products)
         self.inventory_view.bookkeeper_requested.connect(self.handle_bookkeeper)
+        self.inventory_view.vehicles_requested.connect(self.handle_vehicles)
         self.inventory_view.configuration_requested.connect(self.handle_configuration)
         self.inventory_view.logout_requested.connect(self.handle_logout)
         
@@ -68,7 +70,11 @@ class InventoryController(QObject):
     def handle_bookkeeper(self):
         """Handle bookkeeper navigation."""
         self.bookkeeper_requested.emit()
-    
+
+    def handle_vehicles(self):
+        """Handle vehicles navigation."""
+        self.vehicles_requested.emit()
+
     def handle_configuration(self):
         """Handle configuration navigation."""
         self.configuration_requested.emit()

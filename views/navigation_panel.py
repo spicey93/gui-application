@@ -14,6 +14,7 @@ class NavigationPanel(QFrame):
     products_requested = Signal()
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
+    vehicles_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -89,8 +90,15 @@ class NavigationPanel(QFrame):
         self.bookkeeper_button.clicked.connect(self._handle_bookkeeper)
         nav_layout.addWidget(self.bookkeeper_button)
         
+        # Vehicles menu item
+        self.vehicles_button = QPushButton("Vehicles (F7)")
+        self.vehicles_button.setObjectName("navButton")
+        self.vehicles_button.setMinimumHeight(30)
+        self.vehicles_button.clicked.connect(self._handle_vehicles)
+        nav_layout.addWidget(self.vehicles_button)
+        
         # Configuration menu item
-        self.config_button = QPushButton("Configuration (F7)")
+        self.config_button = QPushButton("Configuration (F8)")
         self.config_button.setObjectName("navButton")
         self.config_button.setMinimumHeight(30)
         self.config_button.clicked.connect(self._handle_configuration)
@@ -126,7 +134,8 @@ class NavigationPanel(QFrame):
         self.setTabOrder(self.customers_button, self.products_button)
         self.setTabOrder(self.products_button, self.inventory_button)
         self.setTabOrder(self.inventory_button, self.bookkeeper_button)
-        self.setTabOrder(self.bookkeeper_button, self.config_button)
+        self.setTabOrder(self.bookkeeper_button, self.vehicles_button)
+        self.setTabOrder(self.vehicles_button, self.config_button)
         self.setTabOrder(self.config_button, self.logout_button)
         
         # Arrow keys for navigation panel
@@ -136,6 +145,7 @@ class NavigationPanel(QFrame):
         self.products_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.inventory_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.bookkeeper_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.vehicles_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.config_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.logout_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
@@ -172,6 +182,11 @@ class NavigationPanel(QFrame):
         if self.current_view != "bookkeeper":
             self.bookkeeper_requested.emit()
     
+    def _handle_vehicles(self):
+        """Handle vehicles button click."""
+        if self.current_view != "vehicles":
+            self.vehicles_requested.emit()
+    
     def _handle_configuration(self):
         """Handle configuration button click."""
         if self.current_view != "configuration":
@@ -201,6 +216,7 @@ class NavigationPanel(QFrame):
             "products": self.products_button,
             "inventory": self.inventory_button,
             "bookkeeper": self.bookkeeper_button,
+            "vehicles": self.vehicles_button,
             "configuration": self.config_button
         }
         
