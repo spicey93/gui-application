@@ -162,3 +162,4 @@ class VehiclesController(QObject):
             self.refresh_vehicles()
         else:
             self.vehicles_view.show_message("Error", message, is_error=True)
+

@@ -351,3 +351,4 @@ class VehiclesView(BaseTabbedView):
             QMessageBox.StandardButton.No
         )
         return reply == QMessageBox.StandardButton.Yes
+

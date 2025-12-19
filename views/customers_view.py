@@ -500,3 +500,4 @@ class CustomersView(BaseTabbedView):
     def show_error_dialog(self, message: str) -> None:
         """Show an error message dialog."""
         QMessageBox.warning(self, "Error", message)
+

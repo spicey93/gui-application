@@ -40,3 +40,4 @@ class EnterKeyTableWidget(QTableWidget):
                 event.accept()
                 return
         super().keyPressEvent(event)
+

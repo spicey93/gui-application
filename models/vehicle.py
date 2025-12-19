@@ -178,3 +178,4 @@ class Vehicle:
         if data.get('raw_response'):
             data['raw_response'] = json.loads(data['raw_response'])
         return data
+

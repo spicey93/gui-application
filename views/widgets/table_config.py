@@ -97,3 +97,4 @@ class TableConfig:
                     current_width = header.sectionSize(col)
                     if current_width < width:
                         header.resizeSection(col, width)
+

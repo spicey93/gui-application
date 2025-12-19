@@ -259,3 +259,4 @@ class Customer:
                 return True, "Customer deleted successfully"
         except Exception as e:
             return False, f"Error deleting customer: {str(e)}"
+

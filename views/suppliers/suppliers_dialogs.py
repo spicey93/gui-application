@@ -126,3 +126,4 @@ class SupplierDialogs:
         
         # Show dialog
         dialog.exec()
+

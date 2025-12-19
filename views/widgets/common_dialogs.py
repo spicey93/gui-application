@@ -76,3 +76,4 @@ def show_warning_message(
         title: Dialog title (default: "Warning")
     """
     QMessageBox.warning(parent, title, message)
+

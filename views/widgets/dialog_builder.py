@@ -190,3 +190,4 @@ class DialogBuilder:
         status_label.setStyleSheet("color: red; font-size: 9px;")
         layout.addWidget(status_label)
         return status_label
+

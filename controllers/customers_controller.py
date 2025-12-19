@@ -123,3 +123,4 @@ class CustomersController(QObject):
     def handle_logout(self) -> None:
         """Handle logout."""
         self.logout_requested.emit()
+
