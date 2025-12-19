@@ -20,6 +20,7 @@ from models.nominal_account import NominalAccount
 from models.journal_entry import JournalEntry
 from models.api_key import ApiKey
 from models.vehicle import Vehicle
+from models.tyre import Tyre
 from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from views.suppliers_view import SuppliersView
@@ -72,6 +73,7 @@ class Application(QMainWindow):
         self.journal_entry_model = JournalEntry()
         self.api_key_model = ApiKey()
         self.vehicle_model = Vehicle()
+        self.tyre_model = Tyre()
         
         # Current user ID (None until login)
         self.current_user_id: Optional[int] = None
@@ -198,6 +200,10 @@ class Application(QMainWindow):
         self.shortcut_transfer.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_transfer.activated.connect(self._handle_transfer_shortcut)
         
+        # Ctrl+Shift+C: View Tyre Catalogue (Products only)
+        self.shortcut_catalogue = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
+        self.shortcut_catalogue.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.shortcut_catalogue.activated.connect(self._handle_catalogue_shortcut)
         
         # Ctrl+Q: Exit application
         self.shortcut_quit = QShortcut(QKeySequence("Ctrl+Q"), self)
@@ -300,6 +306,13 @@ class Application(QMainWindow):
             if current_index == self.bookkeeper_index:
                 self.bookkeeper_view.transfer_funds()
     
+    def _handle_catalogue_shortcut(self):
+        """Handle view catalogue keyboard shortcut (Products only)."""
+        if self.current_user_id is not None:
+            current_index = self.stacked_widget.currentIndex()
+            if current_index == self.products_index:
+                self.products_view._handle_view_catalogue()
+    
     def _exit_application(self):
         """Exit the application with confirmation."""
         reply = QMessageBox.question(
@@ -383,6 +396,7 @@ class Application(QMainWindow):
                 self.products_view,
                 self.product_model,
                 self.product_type_model,
+                self.tyre_model,
                 user_id
             )
             self.products_controller.dashboard_requested.connect(self.on_back_to_dashboard)

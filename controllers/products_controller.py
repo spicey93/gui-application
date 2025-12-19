@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from views.products_view import ProductsView
     from models.product import Product
     from models.product_type import ProductType
+    from models.tyre import Tyre
 
 
 class ProductsController(QObject):
@@ -21,12 +22,13 @@ class ProductsController(QObject):
     configuration_requested = Signal()
     logout_requested = Signal()
     
-    def __init__(self, products_view: "ProductsView", product_model: "Product", product_type_model: "ProductType", user_id: int):
+    def __init__(self, products_view: "ProductsView", product_model: "Product", product_type_model: "ProductType", tyre_model: "Tyre", user_id: int):
         """Initialize the products controller."""
         super().__init__()
         self.products_view = products_view
         self.product_model = product_model
         self.product_type_model = product_type_model
+        self.tyre_model = tyre_model
         self.user_id = user_id
         
         # Connect view signals to controller handlers
@@ -43,6 +45,7 @@ class ProductsController(QObject):
         self.products_view.delete_requested.connect(self.handle_delete)
         self.products_view.refresh_requested.connect(self.refresh_products)
         self.products_view.add_product_type_requested.connect(self.handle_add_product_type)
+        self.products_view.catalogue_requested.connect(self.handle_catalogue)
         
         # Load initial products and types
         self.refresh_products()
@@ -176,4 +179,11 @@ class ProductsController(QObject):
     def handle_logout(self):
         """Handle logout."""
         self.logout_requested.emit()
+    
+    def handle_catalogue(self):
+        """Handle catalogue view request."""
+        from views.tyre_catalogue_view import TyreCatalogueView
+        
+        catalogue_dialog = TyreCatalogueView(self.tyre_model, self.products_view)
+        catalogue_dialog.exec()
 

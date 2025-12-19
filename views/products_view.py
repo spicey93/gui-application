@@ -37,6 +37,7 @@ class ProductsView(BaseTabbedView):
     delete_requested = Signal(int)
     refresh_requested = Signal()
     add_product_type_requested = Signal(str)  # Signal for adding product type
+    catalogue_requested = Signal()  # Signal for opening tyre catalogue
     
     def __init__(self):
         """Initialize the products view."""
@@ -53,6 +54,13 @@ class ProductsView(BaseTabbedView):
         self.add_product_button = self.add_action_button(
             "Add Product (Ctrl+N)",
             self._handle_add_product,
+            None  # Shortcut handled globally in main.py
+        )
+        
+        # Add View Catalogue button
+        self.view_catalogue_button = self.add_action_button(
+            "View Catalogue (Ctrl+Shift+C)",
+            self._handle_view_catalogue,
             None  # Shortcut handled globally in main.py
         )
         
@@ -106,6 +114,10 @@ class ProductsView(BaseTabbedView):
     def _handle_add_product(self):
         """Handle Add Product button click."""
         self.add_product()
+    
+    def _handle_view_catalogue(self):
+        """Handle View Catalogue button click."""
+        self.catalogue_requested.emit()
     
     def _on_table_double_click(self, item: QTableWidgetItem):
         """Handle double-click on table item."""
