@@ -3,10 +3,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QDialog, QLineEdit, 
     QTabWidget, QMessageBox, QHeaderView, QDateEdit, 
-    QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit
+    QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit, QCompleter
 )
-from PySide6.QtCore import Qt, Signal, QDate, QEvent
-from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
+from PySide6.QtCore import Qt, Signal, QDate, QEvent, QStringListModel
+from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence, QCloseEvent
 from typing import List, Dict, Optional, Callable, TYPE_CHECKING
 from views.base_view import BaseTabbedView
 from utils.styles import apply_theme
@@ -1130,8 +1130,38 @@ class SuppliersView(BaseTabbedView):
         dialog.resize(800, 600)
         apply_theme(dialog)
         
+        # Override closeEvent to show confirmation
+        def handle_close_event(event: QCloseEvent):
+            """Handle close event with confirmation."""
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Close",
+                "Are you sure you want to close? Any unsaved changes will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                event.accept()
+            else:
+                event.ignore()
+        
+        dialog.closeEvent = handle_close_event
+        
+        # Handle Escape key with confirmation
+        def handle_escape():
+            """Handle Escape key with confirmation."""
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Close",
+                "Are you sure you want to close? Any unsaved changes will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                dialog.reject()
+        
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
-        esc_shortcut.activated.connect(dialog.reject)
+        esc_shortcut.activated.connect(handle_escape)
         
         layout = QVBoxLayout(dialog)
         layout.setSpacing(15)
@@ -1382,8 +1412,20 @@ class SuppliersView(BaseTabbedView):
         ctrl_enter.activated.connect(handle_save)
         button_layout.addWidget(save_btn)
         
+        def handle_cancel():
+            """Handle cancel button with confirmation."""
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Close",
+                "Are you sure you want to close? Any unsaved changes will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                dialog.reject()
+        
         cancel_btn = QPushButton("Cancel (Esc)")
-        cancel_btn.clicked.connect(dialog.reject)
+        cancel_btn.clicked.connect(handle_cancel)
         button_layout.addWidget(cancel_btn)
         
         layout.addLayout(button_layout)
@@ -1407,8 +1449,38 @@ class SuppliersView(BaseTabbedView):
         dialog.resize(900, 800)
         apply_theme(dialog)
         
+        # Override closeEvent to show confirmation
+        def handle_close_event(event: QCloseEvent):
+            """Handle close event with confirmation."""
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Close",
+                "Are you sure you want to close? Any unsaved changes will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                event.accept()
+            else:
+                event.ignore()
+        
+        dialog.closeEvent = handle_close_event
+        
+        # Handle Escape key with confirmation
+        def handle_escape():
+            """Handle Escape key with confirmation."""
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Close",
+                "Are you sure you want to close? Any unsaved changes will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                dialog.reject()
+        
         esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
-        esc_shortcut.activated.connect(dialog.reject)
+        esc_shortcut.activated.connect(handle_escape)
         
         main_layout = QVBoxLayout(dialog)
         main_layout.setSpacing(15)
@@ -1456,20 +1528,22 @@ class SuppliersView(BaseTabbedView):
         filter_grid.addWidget(search_entry, row, 1)
         row += 1
         
-        # Brand filter
+        # Brand filter - editable with autocomplete
         brand_label = QLabel("Brand:")
         brand_label.setStyleSheet("font-size: 11px;")
         filter_grid.addWidget(brand_label, row, 0)
         brand_combo = QComboBox()
+        brand_combo.setEditable(True)
         brand_combo.addItem("")  # Empty option
         filter_grid.addWidget(brand_combo, row, 1)
         row += 1
         
-        # Model filter
+        # Model filter - editable with autocomplete
         model_label = QLabel("Model:")
         model_label.setStyleSheet("font-size: 11px;")
         filter_grid.addWidget(model_label, row, 0)
         model_combo = QComboBox()
+        model_combo.setEditable(True)
         model_combo.addItem("")  # Empty option
         filter_grid.addWidget(model_combo, row, 1)
         row += 1
@@ -1482,7 +1556,6 @@ class SuppliersView(BaseTabbedView):
         
         search_button = QPushButton("Search")
         search_button.setMinimumHeight(30)
-        search_button.setDefault(True)
         button_row_layout.addWidget(search_button)
         
         clear_button = QPushButton("Clear")
@@ -1515,14 +1588,11 @@ class SuppliersView(BaseTabbedView):
         products_layout.addWidget(no_results_label)
         
         products_table = ProductSearchTableWidget(lambda row: add_to_basket_from_row(row))
-        products_table.setColumnCount(4)
-        products_table.setHorizontalHeaderLabels(["Stock #", "Description", "Type", "Source"])
-        # Set column resize modes - Description stretches, others resize to contents
+        products_table.setColumnCount(1)
+        products_table.setHorizontalHeaderLabels(["Description"])
+        # Set column resize modes - Description stretches
         header = products_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         products_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         products_table.setAlternatingRowColors(True)
@@ -1538,9 +1608,6 @@ class SuppliersView(BaseTabbedView):
         
         def load_brand_dropdowns():
             """Load brand dropdown with values from both products and catalogue."""
-            brand_combo.clear()
-            brand_combo.addItem("")  # Empty option
-            
             brands = set()
             
             # Get brands from products
@@ -1555,17 +1622,22 @@ class SuppliersView(BaseTabbedView):
                 catalogue_brands = tyre_model.get_unique_brands()
                 brands.update(catalogue_brands)
             
-            for brand in sorted(brands):
+            # Set up autocomplete for brand
+            brand_list = sorted(brands)
+            brand_completer = QCompleter(brand_list, brand_combo)
+            brand_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            brand_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            brand_combo.setCompleter(brand_completer)
+            
+            # Add items to combo for dropdown
+            brand_combo.clear()
+            brand_combo.addItem("")  # Empty option
+            for brand in brand_list:
                 brand_combo.addItem(brand)
         
         def load_model_dropdown():
             """Load model dropdown based on selected brand."""
-            model_combo.clear()
-            model_combo.addItem("")  # Empty option
-            
-            selected_brand = brand_combo.currentText()
-            if not selected_brand:
-                return
+            selected_brand = brand_combo.currentText().strip()
             
             models = set()
             
@@ -1573,17 +1645,32 @@ class SuppliersView(BaseTabbedView):
             if self.product_model:
                 tyre_products = self.product_model.get_tyre_products(self._current_user_id) if hasattr(self, '_current_user_id') else []
                 for product in tyre_products:
-                    if product.get('tyre_brand') == selected_brand and product.get('tyre_model'):
+                    product_brand = product.get('tyre_brand', '').strip()
+                    if (not selected_brand or product_brand == selected_brand) and product.get('tyre_model'):
                         models.add(product['tyre_model'])
             
             # Get models from catalogue
             if tyre_model:
-                catalogue_tyres = tyre_model.search(brand=selected_brand, limit=10000)
+                if selected_brand:
+                    catalogue_tyres = tyre_model.search(brand=selected_brand, limit=10000)
+                else:
+                    # If no brand selected, get all models (limited)
+                    catalogue_tyres = tyre_model.search(limit=10000)
                 for tyre in catalogue_tyres:
                     if tyre.get('model'):
                         models.add(tyre['model'])
             
-            for model in sorted(models):
+            # Set up autocomplete for model
+            model_list = sorted(models)
+            model_completer = QCompleter(model_list, model_combo)
+            model_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            model_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            model_combo.setCompleter(model_completer)
+            
+            # Add items to combo for dropdown
+            model_combo.clear()
+            model_combo.addItem("")  # Empty option
+            for model in model_list:
                 model_combo.addItem(model)
         
         # Connect brand dropdown to update model dropdown
@@ -1591,6 +1678,34 @@ class SuppliersView(BaseTabbedView):
         
         # Initial load of brand dropdown
         load_brand_dropdowns()
+        
+        # Set up Enter key handlers for brand and model
+        def handle_brand_enter():
+            """Handle Enter key in brand field."""
+            filter_products()
+        
+        def handle_model_enter():
+            """Handle Enter key in model field."""
+            filter_products()
+        
+        # Custom line edit class to prevent Enter from triggering default button
+        class ComboLineEdit(QLineEdit):
+            def keyPressEvent(self, event):
+                """Override to prevent Enter from triggering default button."""
+                if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                    self.returnPressed.emit()
+                    event.accept()
+                    return
+                super().keyPressEvent(event)
+        
+        # Replace line edits with custom ones
+        brand_line_edit = ComboLineEdit()
+        brand_combo.setLineEdit(brand_line_edit)
+        brand_line_edit.returnPressed.connect(handle_brand_enter)
+        
+        model_line_edit = ComboLineEdit()
+        model_combo.setLineEdit(model_line_edit)
+        model_line_edit.returnPressed.connect(handle_model_enter)
         
         def show_add_product_dialog(product):
             """Show dialog to enter unit cost, VAT code, and quantity."""
@@ -1728,9 +1843,19 @@ class SuppliersView(BaseTabbedView):
                     })
                 update_basket_table()
                 item_dialog.accept()
+                
+                # Clear search fields and results table
+                search_entry.clear()
+                brand_combo.setCurrentIndex(0)
+                brand_combo.lineEdit().clear()
+                model_combo.setCurrentIndex(0)
+                model_combo.lineEdit().clear()
+                products_table.setRowCount(0)
+                filtered_products_list.clear()
+                no_results_label.hide()
+                
                 # Return focus to search field for next search
                 search_entry.setFocus()
-                search_entry.clear()
             
             add_btn = QPushButton("Add to Basket")
             add_btn.setDefault(True)
@@ -1801,8 +1926,8 @@ class SuppliersView(BaseTabbedView):
             """Filter products and catalogue tyres based on search text and filters."""
             nonlocal filtered_products_list
             search_text = search_entry.text().lower().strip()
-            selected_brand = brand_combo.currentText()
-            selected_model = model_combo.currentText()
+            selected_brand = brand_combo.currentText().strip()
+            selected_model = model_combo.currentText().strip()
             
             results = []
             
@@ -1810,18 +1935,20 @@ class SuppliersView(BaseTabbedView):
             # Search products
             product_list = all_products
             
-            # Apply brand filter for tyre products
+            # Apply brand filter for tyre products (case-insensitive partial match)
             if selected_brand:
+                brand_lower = selected_brand.lower()
                 product_list = [
                     p for p in product_list
-                    if not p.get('is_tyre') or p.get('tyre_brand') == selected_brand
+                    if not p.get('is_tyre') or (p.get('tyre_brand', '') or '').lower().find(brand_lower) != -1
                 ]
             
-            # Apply model filter for tyre products
+            # Apply model filter for tyre products (case-insensitive partial match)
             if selected_model:
+                model_lower = selected_model.lower()
                 product_list = [
                     p for p in product_list
-                    if not p.get('is_tyre') or p.get('tyre_model') == selected_model
+                    if not p.get('is_tyre') or (p.get('tyre_model', '') or '').lower().find(model_lower) != -1
                 ]
             
             # Apply search text filter
@@ -1842,11 +1969,15 @@ class SuppliersView(BaseTabbedView):
             if tyre_model:
                 # Build catalogue search filters
                 catalogue_filters = {}
+                # For brand, use exact match if it's in the dropdown, otherwise search pattern
                 if selected_brand:
-                    catalogue_filters['brand'] = selected_brand
-                if selected_model:
-                    # Note: catalogue search doesn't have model filter, so we'll filter after
-                    pass
+                    # Check if it's an exact match from dropdown
+                    brand_items = [brand_combo.itemText(i) for i in range(brand_combo.count())]
+                    if selected_brand in brand_items:
+                        catalogue_filters['brand'] = selected_brand
+                    else:
+                        # Partial match - will filter after search
+                        pass
                 
                 # Search catalogue
                 catalogue_tyres = tyre_model.search(
@@ -1855,11 +1986,20 @@ class SuppliersView(BaseTabbedView):
                     **catalogue_filters
                 )
                 
-                # Apply model filter if specified
-                if selected_model:
+                # Apply brand filter if specified (partial match)
+                if selected_brand:
+                    brand_lower = selected_brand.lower()
                     catalogue_tyres = [
                         t for t in catalogue_tyres
-                        if t.get('model') == selected_model
+                        if (t.get('brand', '') or '').lower().find(brand_lower) != -1
+                    ]
+                
+                # Apply model filter if specified (partial match)
+                if selected_model:
+                    model_lower = selected_model.lower()
+                    catalogue_tyres = [
+                        t for t in catalogue_tyres
+                        if (t.get('model', '') or '').lower().find(model_lower) != -1
                     ]
                 
                 # Add catalogue tyres to results
@@ -1874,24 +2014,17 @@ class SuppliersView(BaseTabbedView):
             
             filtered_products_list = results
             
-            # Show/hide no results message
+            # Always show table, just populate it (empty if no results)
+            products_table.setRowCount(len(filtered_products_list))
+            
             if len(filtered_products_list) == 0:
                 no_results_label.setText("No products or tyres exist that match the search.")
                 no_results_label.show()
-                products_table.hide()
-                products_table.setRowCount(0)
             else:
                 no_results_label.hide()
-                products_table.show()
                 
-                products_table.setRowCount(len(filtered_products_list))
                 for row, item in enumerate(filtered_products_list):
-                    products_table.setItem(row, 0, QTableWidgetItem(item.get('stock_number', '')))
-                    products_table.setItem(row, 1, QTableWidgetItem(item.get('description', '')))
-                    products_table.setItem(row, 2, QTableWidgetItem(item.get('type', '')))
-                    # Add source indicator
-                    source_text = "[Catalogue]" if item.get('_source') == 'catalogue' else ""
-                    products_table.setItem(row, 3, QTableWidgetItem(source_text))
+                    products_table.setItem(row, 0, QTableWidgetItem(item.get('description', '')))
                 
                 # Select and highlight first row if results exist
                 products_table.selectRow(0)
@@ -1977,7 +2110,6 @@ class SuppliersView(BaseTabbedView):
         filtered_products_list = []
         products_table.setRowCount(0)
         no_results_label.hide()
-        products_table.hide()
         
         # Buttons
         button_layout = QHBoxLayout()
@@ -2060,15 +2192,29 @@ class SuppliersView(BaseTabbedView):
         ctrl_enter.activated.connect(handle_submit)
         button_layout.addWidget(submit_btn)
         
+        def handle_cancel():
+            """Handle cancel button with confirmation."""
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Close",
+                "Are you sure you want to close? Any unsaved changes will be lost.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                dialog.reject()
+        
         cancel_btn = QPushButton("Cancel (Esc)")
         cancel_btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        cancel_btn.clicked.connect(dialog.reject)
+        cancel_btn.clicked.connect(handle_cancel)
         button_layout.addWidget(cancel_btn)
         
         main_layout.addLayout(button_layout)
         
-        # Set up tab order
-        dialog.setTabOrder(search_entry, products_table)
+        # Set up tab order: Search -> Brand -> Model -> Products Table -> Basket -> Submit -> Cancel
+        dialog.setTabOrder(search_entry, brand_combo)
+        dialog.setTabOrder(brand_combo, model_combo)
+        dialog.setTabOrder(model_combo, products_table)
         dialog.setTabOrder(products_table, basket_table)
         dialog.setTabOrder(basket_table, submit_btn)
         dialog.setTabOrder(submit_btn, cancel_btn)
