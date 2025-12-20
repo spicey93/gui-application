@@ -2,13 +2,14 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QDialog, QLineEdit, QComboBox, QMessageBox, QHeaderView, QLabel, QPushButton,
-    QScrollArea, QCheckBox
+    QScrollArea, QCheckBox, QGridLayout
 )
 from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
 from utils.styles import apply_theme
+from utils.tyre_parser import extract_tyre_specs, validate_tyre_description
 
 
 class ProductsTableWidget(QTableWidget):
@@ -757,38 +758,48 @@ class ProductsView(BaseTabbedView):
         title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
         layout.addWidget(title_label)
         
-        # Standard fields
-        stock_layout = QHBoxLayout()
+        # Create two-column grid layout
+        grid_layout = QGridLayout()
+        grid_layout.setColumnStretch(0, 0)  # Label column - fixed width
+        grid_layout.setColumnStretch(1, 1)   # Input column - stretches
+        grid_layout.setSpacing(10)
+        grid_layout.setColumnMinimumWidth(0, 150)  # Minimum width for label column
+        
+        row = 0
+        
+        # Stock Number
         stock_label = QLabel("Stock Number:")
-        stock_label.setMinimumWidth(180)
         stock_label.setStyleSheet("font-size: 11px;")
-        stock_layout.addWidget(stock_label)
+        grid_layout.addWidget(stock_label, row, 0)
         stock_entry = QLineEdit()
         stock_entry.setStyleSheet("font-size: 11px;")
-        stock_layout.addWidget(stock_entry, stretch=1)
-        layout.addLayout(stock_layout)
+        grid_layout.addWidget(stock_entry, row, 1)
+        row += 1
         
-        desc_layout = QHBoxLayout()
+        # Description
         desc_label = QLabel("Description:")
-        desc_label.setMinimumWidth(180)
         desc_label.setStyleSheet("font-size: 11px;")
-        desc_layout.addWidget(desc_label)
+        grid_layout.addWidget(desc_label, row, 0)
         desc_entry = QLineEdit()
         desc_entry.setStyleSheet("font-size: 11px;")
-        desc_layout.addWidget(desc_entry, stretch=1)
-        layout.addLayout(desc_layout)
+        desc_entry.setPlaceholderText("e.g., 225/45R17 91W")
+        grid_layout.addWidget(desc_entry, row, 1)
+        row += 1
         
-        # Type is automatically set to "Tyre" for tyre products, no need for user input
+        # Validation status label (spans both columns)
+        validation_label = QLabel("")
+        validation_label.setStyleSheet("font-size: 10px; color: red;")
+        validation_label.setWordWrap(True)
+        grid_layout.addWidget(validation_label, row, 0, 1, 2)
+        row += 1
         
         # Get tyre_model if available (for brand/model dropdowns)
         tyre_model = getattr(self, 'tyre_model', None)
         
         # Brand
-        brand_layout = QHBoxLayout()
         brand_label = QLabel("Brand:")
-        brand_label.setMinimumWidth(180)
         brand_label.setStyleSheet("font-size: 11px;")
-        brand_layout.addWidget(brand_label)
+        grid_layout.addWidget(brand_label, row, 0)
         brand_combo = QComboBox()
         brand_combo.setStyleSheet("font-size: 11px;")
         brand_combo.setEditable(True)
@@ -796,93 +807,39 @@ class ProductsView(BaseTabbedView):
         if tyre_model:
             for brand in tyre_model.get_unique_brands():
                 brand_combo.addItem(brand)
-        brand_layout.addWidget(brand_combo, stretch=1)
-        layout.addLayout(brand_layout)
+        grid_layout.addWidget(brand_combo, row, 1)
+        row += 1
         
-        # Model
-        model_layout = QHBoxLayout()
+        # Model (dropdown that updates based on brand)
         model_label = QLabel("Model:")
-        model_label.setMinimumWidth(180)
         model_label.setStyleSheet("font-size: 11px;")
-        model_layout.addWidget(model_label)
-        model_entry = QLineEdit()
-        model_entry.setStyleSheet("font-size: 11px;")
-        model_layout.addWidget(model_entry, stretch=1)
-        layout.addLayout(model_layout)
+        grid_layout.addWidget(model_label, row, 0)
+        model_combo = QComboBox()
+        model_combo.setStyleSheet("font-size: 11px;")
+        model_combo.setEditable(True)
+        model_combo.addItem("")
+        grid_layout.addWidget(model_combo, row, 1)
+        row += 1
         
-        # Pattern
-        pattern_layout = QHBoxLayout()
-        pattern_label = QLabel("Pattern:")
-        pattern_label.setMinimumWidth(180)
-        pattern_label.setStyleSheet("font-size: 11px;")
-        pattern_layout.addWidget(pattern_label)
-        pattern_entry = QLineEdit()
-        pattern_entry.setStyleSheet("font-size: 11px;")
-        pattern_layout.addWidget(pattern_entry, stretch=1)
-        layout.addLayout(pattern_layout)
+        # Function to update model dropdown based on brand selection
+        def update_model_dropdown():
+            """Update model dropdown based on selected brand."""
+            brand = brand_combo.currentText().strip()
+            model_combo.clear()
+            model_combo.addItem("")
+            if brand and tyre_model:
+                models = tyre_model.get_unique_models_by_brand(brand)
+                for model in models:
+                    model_combo.addItem(model)
         
-        # Width, Profile, Diameter
-        size_layout = QHBoxLayout()
-        width_label = QLabel("Width:")
-        width_label.setMinimumWidth(60)
-        width_label.setStyleSheet("font-size: 11px;")
-        size_layout.addWidget(width_label)
-        width_entry = QLineEdit()
-        width_entry.setStyleSheet("font-size: 11px;")
-        size_layout.addWidget(width_entry)
-        
-        profile_label = QLabel("Profile:")
-        profile_label.setMinimumWidth(60)
-        profile_label.setStyleSheet("font-size: 11px;")
-        size_layout.addWidget(profile_label)
-        profile_entry = QLineEdit()
-        profile_entry.setStyleSheet("font-size: 11px;")
-        size_layout.addWidget(profile_entry)
-        
-        diameter_label = QLabel("Diameter:")
-        diameter_label.setMinimumWidth(70)
-        diameter_label.setStyleSheet("font-size: 11px;")
-        size_layout.addWidget(diameter_label)
-        diameter_entry = QLineEdit()
-        diameter_entry.setStyleSheet("font-size: 11px;")
-        size_layout.addWidget(diameter_entry, stretch=1)
-        layout.addLayout(size_layout)
-        
-        # Speed Rating, Load Index
-        rating_layout = QHBoxLayout()
-        speed_label = QLabel("Speed Rating:")
-        speed_label.setMinimumWidth(100)
-        speed_label.setStyleSheet("font-size: 11px;")
-        rating_layout.addWidget(speed_label)
-        speed_combo = QComboBox()
-        speed_combo.setStyleSheet("font-size: 11px;")
-        speed_combo.setEditable(True)
-        speed_combo.addItem("")
-        if tyre_model:
-            for rating in tyre_model.get_unique_speed_ratings():
-                speed_combo.addItem(rating)
-        rating_layout.addWidget(speed_combo)
-        
-        load_label = QLabel("Load Index:")
-        load_label.setMinimumWidth(100)
-        load_label.setStyleSheet("font-size: 11px;")
-        rating_layout.addWidget(load_label)
-        load_combo = QComboBox()
-        load_combo.setStyleSheet("font-size: 11px;")
-        load_combo.setEditable(True)
-        load_combo.addItem("")
-        if tyre_model:
-            for load in tyre_model.get_unique_load_indices():
-                load_combo.addItem(load)
-        rating_layout.addWidget(load_combo, stretch=1)
-        layout.addLayout(rating_layout)
+        # Connect brand change to model update
+        brand_combo.currentTextChanged.connect(update_model_dropdown)
+        brand_combo.editTextChanged.connect(update_model_dropdown)
         
         # OE Fitment
-        oe_layout = QHBoxLayout()
         oe_label = QLabel("OE Fitment:")
-        oe_label.setMinimumWidth(180)
         oe_label.setStyleSheet("font-size: 11px;")
-        oe_layout.addWidget(oe_label)
+        grid_layout.addWidget(oe_label, row, 0)
         oe_combo = QComboBox()
         oe_combo.setStyleSheet("font-size: 11px;")
         oe_combo.setEditable(True)
@@ -890,34 +847,39 @@ class ProductsView(BaseTabbedView):
         if tyre_model:
             for fitment in tyre_model.get_unique_oe_fitments():
                 oe_combo.addItem(fitment)
-        oe_layout.addWidget(oe_combo, stretch=1)
-        layout.addLayout(oe_layout)
+        grid_layout.addWidget(oe_combo, row, 1)
+        row += 1
         
-        # EAN, Manufacturer Code
-        code_layout = QHBoxLayout()
+        # Note: Pattern, Width, Profile, Diameter, Speed Rating, and Load Index
+        # are automatically extracted from the description field
+        note_label = QLabel("Note: Pattern, Width, Profile, Diameter, Speed Rating, and Load Index are automatically extracted from the description.")
+        note_label.setStyleSheet("font-size: 10px; color: gray; font-style: italic;")
+        note_label.setWordWrap(True)
+        grid_layout.addWidget(note_label, row, 0, 1, 2)
+        row += 1
+        
+        # EAN
         ean_label = QLabel("EAN:")
-        ean_label.setMinimumWidth(100)
         ean_label.setStyleSheet("font-size: 11px;")
-        code_layout.addWidget(ean_label)
+        grid_layout.addWidget(ean_label, row, 0)
         ean_entry = QLineEdit()
         ean_entry.setStyleSheet("font-size: 11px;")
-        code_layout.addWidget(ean_entry)
+        grid_layout.addWidget(ean_entry, row, 1)
+        row += 1
         
+        # Manufacturer Code
         mfg_label = QLabel("Manufacturer Code:")
-        mfg_label.setMinimumWidth(130)
         mfg_label.setStyleSheet("font-size: 11px;")
-        code_layout.addWidget(mfg_label)
+        grid_layout.addWidget(mfg_label, row, 0)
         mfg_entry = QLineEdit()
         mfg_entry.setStyleSheet("font-size: 11px;")
-        code_layout.addWidget(mfg_entry, stretch=1)
-        layout.addLayout(code_layout)
+        grid_layout.addWidget(mfg_entry, row, 1)
+        row += 1
         
-        # Vehicle Type, Product Type
-        type2_layout = QHBoxLayout()
+        # Vehicle Type
         vtype_label = QLabel("Vehicle Type:")
-        vtype_label.setMinimumWidth(100)
         vtype_label.setStyleSheet("font-size: 11px;")
-        type2_layout.addWidget(vtype_label)
+        grid_layout.addWidget(vtype_label, row, 0)
         vtype_combo = QComboBox()
         vtype_combo.setStyleSheet("font-size: 11px;")
         vtype_combo.setEditable(True)
@@ -925,12 +887,13 @@ class ProductsView(BaseTabbedView):
         if tyre_model:
             for vtype in tyre_model.get_unique_vehicle_types():
                 vtype_combo.addItem(vtype)
-        type2_layout.addWidget(vtype_combo)
+        grid_layout.addWidget(vtype_combo, row, 1)
+        row += 1
         
+        # Product Type
         ptype_label = QLabel("Product Type:")
-        ptype_label.setMinimumWidth(100)
         ptype_label.setStyleSheet("font-size: 11px;")
-        type2_layout.addWidget(ptype_label)
+        grid_layout.addWidget(ptype_label, row, 0)
         ptype_combo = QComboBox()
         ptype_combo.setStyleSheet("font-size: 11px;")
         ptype_combo.setEditable(True)
@@ -938,15 +901,13 @@ class ProductsView(BaseTabbedView):
         if tyre_model:
             for ptype in tyre_model.get_unique_product_types():
                 ptype_combo.addItem(ptype)
-        type2_layout.addWidget(ptype_combo, stretch=1)
-        layout.addLayout(type2_layout)
+        grid_layout.addWidget(ptype_combo, row, 1)
+        row += 1
         
-        # Rolling Resistance, Wet Grip
-        perf_layout = QHBoxLayout()
+        # Rolling Resistance
         rr_label = QLabel("Rolling Resistance:")
-        rr_label.setMinimumWidth(120)
         rr_label.setStyleSheet("font-size: 11px;")
-        perf_layout.addWidget(rr_label)
+        grid_layout.addWidget(rr_label, row, 0)
         rr_combo = QComboBox()
         rr_combo.setStyleSheet("font-size: 11px;")
         rr_combo.setEditable(True)
@@ -954,12 +915,13 @@ class ProductsView(BaseTabbedView):
         if tyre_model:
             for rr in tyre_model.get_unique_rolling_resistances():
                 rr_combo.addItem(rr)
-        perf_layout.addWidget(rr_combo)
+        grid_layout.addWidget(rr_combo, row, 1)
+        row += 1
         
+        # Wet Grip
         wg_label = QLabel("Wet Grip:")
-        wg_label.setMinimumWidth(100)
         wg_label.setStyleSheet("font-size: 11px;")
-        perf_layout.addWidget(wg_label)
+        grid_layout.addWidget(wg_label, row, 0)
         wg_combo = QComboBox()
         wg_combo.setStyleSheet("font-size: 11px;")
         wg_combo.setEditable(True)
@@ -967,40 +929,21 @@ class ProductsView(BaseTabbedView):
         if tyre_model:
             for wg in tyre_model.get_unique_wet_grips():
                 wg_combo.addItem(wg)
-        perf_layout.addWidget(wg_combo, stretch=1)
-        layout.addLayout(perf_layout)
+        grid_layout.addWidget(wg_combo, row, 1)
+        row += 1
         
         # Run Flat
-        runflat_layout = QHBoxLayout()
         runflat_label = QLabel("Run Flat:")
-        runflat_label.setMinimumWidth(180)
         runflat_label.setStyleSheet("font-size: 11px;")
-        runflat_layout.addWidget(runflat_label)
+        grid_layout.addWidget(runflat_label, row, 0)
         runflat_check = QCheckBox()
-        runflat_layout.addWidget(runflat_check)
-        runflat_layout.addStretch()
-        layout.addLayout(runflat_layout)
+        grid_layout.addWidget(runflat_check, row, 1, Qt.AlignmentFlag.AlignLeft)
+        row += 1
         
-        # URLs
-        url_layout = QHBoxLayout()
-        url_label = QLabel("Tyre URL:")
-        url_label.setMinimumWidth(180)
-        url_label.setStyleSheet("font-size: 11px;")
-        url_layout.addWidget(url_label)
-        url_entry = QLineEdit()
-        url_entry.setStyleSheet("font-size: 11px;")
-        url_layout.addWidget(url_entry, stretch=1)
-        layout.addLayout(url_layout)
+        # Note: Tyre URL and Brand URL are automatically fetched from the database
+        # based on brand and model selection
         
-        brand_url_layout = QHBoxLayout()
-        brand_url_label = QLabel("Brand URL:")
-        brand_url_label.setMinimumWidth(180)
-        brand_url_label.setStyleSheet("font-size: 11px;")
-        brand_url_layout.addWidget(brand_url_label)
-        brand_url_entry = QLineEdit()
-        brand_url_entry.setStyleSheet("font-size: 11px;")
-        brand_url_layout.addWidget(brand_url_entry, stretch=1)
-        layout.addLayout(brand_url_layout)
+        layout.addLayout(grid_layout)
         
         layout.addStretch()
         
@@ -1009,43 +952,146 @@ class ProductsView(BaseTabbedView):
         status_label.setStyleSheet("color: red; font-size: 9px;")
         layout.addWidget(status_label)
         
+        # Store extracted specs for use in save handler
+        extracted_specs = {'pattern': '', 'width': '', 'profile': '', 'diameter': '', 
+                          'speed_rating': '', 'load_index': ''}
+        
+        # Store fetched URLs (automatically populated from database)
+        fetched_urls = {'tyre_url': '', 'brand_url': ''}
+        
+        # Function to fetch URLs from database based on brand/model
+        def fetch_urls_from_database():
+            """Fetch tyre URL and brand URL from database based on brand/model selection."""
+            brand = brand_combo.currentText().strip()
+            model = model_combo.currentText().strip()
+            
+            if not brand:
+                fetched_urls['tyre_url'] = ''
+                fetched_urls['brand_url'] = ''
+                return
+            
+            if tyre_model:
+                tyre_url, brand_url = tyre_model.get_urls_by_brand_model(brand, model if model else None)
+                fetched_urls['tyre_url'] = tyre_url
+                fetched_urls['brand_url'] = brand_url
+            else:
+                fetched_urls['tyre_url'] = ''
+                fetched_urls['brand_url'] = ''
+        
+        # Connect brand and model changes to URL fetching
+        brand_combo.currentTextChanged.connect(fetch_urls_from_database)
+        brand_combo.editTextChanged.connect(fetch_urls_from_database)
+        model_combo.currentTextChanged.connect(fetch_urls_from_database)
+        model_combo.editTextChanged.connect(fetch_urls_from_database)
+        
+        # Auto-extract specs from description
+        def extract_specs_from_description():
+            """Extract tyre specifications from description."""
+            description = desc_entry.text().strip()
+            
+            # Reset extracted specs
+            extracted_specs.update({'pattern': '', 'width': '', 'profile': '', 'diameter': '', 
+                                  'speed_rating': '', 'load_index': ''})
+            
+            if not description:
+                validation_label.setText("")
+                return
+            
+            # Validate description format
+            is_valid, error_msg = validate_tyre_description(description)
+            if not is_valid:
+                validation_label.setText(f"⚠ {error_msg}")
+                validation_label.setStyleSheet("font-size: 10px; color: red;")
+                return
+            
+            # Clear validation error
+            validation_label.setText("✓ Valid format - specs extracted")
+            validation_label.setStyleSheet("font-size: 10px; color: green;")
+            
+            # Extract specs (OE fitment is not extracted, user selects from dropdown)
+            specs = extract_tyre_specs(description)
+            if specs:
+                width, profile, diameter, speed_rating, load_index, _ = specs  # Ignore OE fitment
+                
+                # Store extracted values
+                extracted_specs['width'] = width
+                extracted_specs['profile'] = profile
+                extracted_specs['diameter'] = diameter
+                extracted_specs['speed_rating'] = speed_rating
+                extracted_specs['load_index'] = load_index
+                
+                # Generate pattern code: width + profile + diameter + speed_rating
+                if width and profile and diameter and speed_rating:
+                    extracted_specs['pattern'] = f"{width}{profile}{diameter}{speed_rating}"
+        
+        # Connect description field to auto-extraction
+        desc_entry.textChanged.connect(extract_specs_from_description)
+        
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
+        # Flag to prevent multiple save attempts
+        _saving = False
+        
         def handle_save():
-            product_stock_number = stock_entry.text().strip()
-            product_description = desc_entry.text().strip()
-            # Type is automatically "Tyre" for tyre products
-            product_type = "Tyre"
-            
-            if not product_stock_number:
-                status_label.setText("Please enter a stock number")
+            nonlocal _saving
+            # Prevent multiple simultaneous save attempts
+            if _saving:
                 return
+            _saving = True
             
-            # Emit signal with all tyre fields
-            self.create_tyre_requested.emit(
-                product_stock_number, product_description, product_type,
-                brand_combo.currentText().strip(),
-                model_entry.text().strip(),
-                pattern_entry.text().strip(),
-                width_entry.text().strip(),
-                profile_entry.text().strip(),
-                diameter_entry.text().strip(),
-                speed_combo.currentText().strip(),
-                load_combo.currentText().strip(),
-                oe_combo.currentText().strip(),
-                ean_entry.text().strip(),
-                mfg_entry.text().strip(),
-                vtype_combo.currentText().strip(),
-                ptype_combo.currentText().strip(),
-                rr_combo.currentText().strip(),
-                wg_combo.currentText().strip(),
-                "Yes" if runflat_check.isChecked() else "",
-                url_entry.text().strip(),
-                brand_url_entry.text().strip()
-            )
-            dialog.accept()
+            try:
+                product_stock_number = stock_entry.text().strip()
+                product_description = desc_entry.text().strip()
+                # Type is automatically "Tyre" for tyre products
+                product_type = "Tyre"
+                
+                if not product_stock_number:
+                    status_label.setText("Please enter a stock number")
+                    _saving = False
+                    return
+                
+                # Validate description format if provided
+                if product_description:
+                    is_valid, error_msg = validate_tyre_description(product_description)
+                    if not is_valid:
+                        status_label.setText(f"Invalid description format: {error_msg}")
+                        _saving = False
+                        return
+                    
+                    # Re-extract specs to ensure we have the latest values
+                    extract_specs_from_description()
+                
+                # Re-fetch URLs to ensure we have the latest values
+                fetch_urls_from_database()
+                
+                # Emit signal with all tyre fields (using extracted specs and dropdown values)
+                self.create_tyre_requested.emit(
+                    product_stock_number, product_description, product_type,
+                    brand_combo.currentText().strip(),
+                    model_combo.currentText().strip(),
+                    extracted_specs['pattern'],
+                    extracted_specs['width'],
+                    extracted_specs['profile'],
+                    extracted_specs['diameter'],
+                    extracted_specs['speed_rating'],
+                    extracted_specs['load_index'],
+                    oe_combo.currentText().strip(),  # Use dropdown value instead of extracted
+                    ean_entry.text().strip(),
+                    mfg_entry.text().strip(),
+                    vtype_combo.currentText().strip(),
+                    ptype_combo.currentText().strip(),
+                    rr_combo.currentText().strip(),
+                    wg_combo.currentText().strip(),
+                    "Yes" if runflat_check.isChecked() else "",
+                    fetched_urls['tyre_url'],  # Use fetched URL from database
+                    fetched_urls['brand_url']  # Use fetched URL from database
+                )
+                dialog.accept()
+            except Exception:
+                _saving = False
+                raise
         
         save_btn = QPushButton("Save (Ctrl+Enter)")
         save_btn.setMinimumWidth(160)

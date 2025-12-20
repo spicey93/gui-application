@@ -410,4 +410,119 @@ class Tyre:
                 return [row[0] for row in rows if row[0]]
         except Exception:
             return []
+    
+    def get_unique_models_by_brand(self, brand: str) -> List[str]:
+        """Get unique model values for a specific brand."""
+        try:
+            if not brand or not brand.strip():
+                return []
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT DISTINCT model FROM tyres
+                    WHERE brand = ? AND model IS NOT NULL AND model != ''
+                    ORDER BY model
+                """, (brand.strip(),))
+                rows = cursor.fetchall()
+                return [row[0] for row in rows if row[0]]
+        except Exception:
+            return []
+    
+    def check_matching_record(
+        self, width: str, profile: str, diameter: str, speed_rating: str,
+        load_index: str, brand: str, model: str
+    ) -> bool:
+        """
+        Check if a matching record exists in the catalogue.
+        
+        Args:
+            width: Tyre width
+            profile: Tyre profile
+            diameter: Tyre diameter
+            speed_rating: Speed rating
+            load_index: Load index
+            brand: Brand name
+            model: Model name
+        
+        Returns:
+            True if a matching record exists, False otherwise
+        """
+        try:
+            # All fields must be provided and non-empty for a match
+            if not all([width, profile, diameter, speed_rating, load_index, brand, model]):
+                return False
+            
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COUNT(*) FROM tyres
+                    WHERE width = ? AND profile = ? AND diameter = ?
+                    AND speed_rating = ? AND load_index = ?
+                    AND brand = ? AND model = ?
+                """, (
+                    width.strip(),
+                    profile.strip(),
+                    diameter.strip(),
+                    speed_rating.strip(),
+                    load_index.strip(),
+                    brand.strip(),
+                    model.strip()
+                ))
+                result = cursor.fetchone()
+                return (result[0] > 0) if result else False
+        except Exception:
+            return False
+    
+    def get_urls_by_brand_model(self, brand: str, model: str = None) -> Tuple[str, str]:
+        """
+        Get tyre URL and brand URL by brand and optionally model.
+        
+        Search priority:
+        1. If model provided: search for brand + model match, return both URLs
+        2. If no model match: search for brand only, return brand URL (tyre URL empty)
+        3. If no brand match: return both as empty
+        
+        Args:
+            brand: Brand name
+            model: Model name (optional)
+        
+        Returns:
+            Tuple of (tyre_url, brand_url)
+        """
+        try:
+            if not brand or not brand.strip():
+                return ("", "")
+            
+            brand = brand.strip()
+            model = model.strip() if model else None
+            
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # First try: brand + model match
+                if model:
+                    cursor.execute("""
+                        SELECT tyre_url, brand_url FROM tyres
+                        WHERE brand = ? AND model = ?
+                        LIMIT 1
+                    """, (brand, model))
+                    row = cursor.fetchone()
+                    if row:
+                        return (row['tyre_url'] or "", row['brand_url'] or "")
+                
+                # Second try: brand only match
+                cursor.execute("""
+                    SELECT brand_url FROM tyres
+                    WHERE brand = ?
+                    LIMIT 1
+                """, (brand,))
+                row = cursor.fetchone()
+                if row:
+                    return ("", row['brand_url'] or "")
+                
+                # No match found
+                return ("", "")
+        except Exception:
+            return ("", "")
 

@@ -1,6 +1,7 @@
 """Products controller."""
 from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QMessageBox
 
 if TYPE_CHECKING:
     from views.products_view import ProductsView
@@ -113,6 +114,31 @@ class ProductsController(QObject):
         run_flat: str, tyre_url: str, brand_url: str
     ):
         """Handle create tyre product."""
+        # Check if a matching record exists in the catalogue
+        if width and profile and diameter and speed_rating and load_index and brand and model:
+            match_exists = self.tyre_model.check_matching_record(
+                width, profile, diameter, speed_rating, load_index, brand, model
+            )
+            
+            if match_exists:
+                # Show confirmation dialog
+                reply = QMessageBox.question(
+                    self.products_view,
+                    "Duplicate Catalogue Record",
+                    f"A record already exists in the catalogue that matches this product:\n\n"
+                    f"Brand: {brand}\n"
+                    f"Model: {model}\n"
+                    f"Size: {width}/{profile}R{diameter}\n"
+                    f"Speed/Load: {speed_rating}/{load_index}\n\n"
+                    "Do you want to continue and create the product anyway?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                
+                if reply == QMessageBox.StandardButton.No:
+                    # User chose not to continue
+                    return
+        
         # Ensure product type exists before creating product
         if type and not self._ensure_product_type_exists(type):
             pass
