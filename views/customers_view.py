@@ -181,12 +181,14 @@ class CustomersView(BaseTabbedView):
         self.customers_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.customers_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
-        # Set column widths
+        # Set column resize modes - ID fixed, Name stretches, others resize to contents
         header = self.customers_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         header.resizeSection(0, 60)
-        header.resizeSection(1, 200)
-        header.resizeSection(2, 150)
-        header.resizeSection(3, 150)
         
         # Selection changed
         self.customers_table.itemSelectionChanged.connect(

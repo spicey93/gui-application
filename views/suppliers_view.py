@@ -95,13 +95,14 @@ class SuppliersView(BaseTabbedView):
     def set_controllers(self, invoice_controller: "InvoiceController", 
                       payment_controller: "PaymentController",
                       supplier_model: "Supplier", user_id: int,
-                      product_model=None):
+                      product_model=None, tyre_model=None):
         """Set the invoice and payment controllers."""
         self.invoice_controller = invoice_controller
         self.payment_controller = payment_controller
         self.supplier_model = supplier_model
         self._current_user_id = user_id
         self.product_model = product_model
+        self.tyre_model = tyre_model
     
     def _create_widgets(self):
         """Create and layout UI widgets."""
@@ -150,11 +151,13 @@ class SuppliersView(BaseTabbedView):
         self.suppliers_table.setAlternatingRowColors(True)
         self.suppliers_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
-        # Set column widths
+        # Set column resize modes - ID fixed, Name stretches, others resize to contents
         header = self.suppliers_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.resizeSection(0, 80)
-        header.resizeSection(1, 200)
-        header.resizeSection(3, 150)
         
         # Enable keyboard navigation
         self.suppliers_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -255,7 +258,13 @@ class SuppliersView(BaseTabbedView):
         self.invoices_table = InvoicesTableWidget(self._handle_invoice_enter)
         self.invoices_table.setColumnCount(6)
         self.invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Supplier", "Total", "Outstanding", "Status"])
-        self.invoices_table.horizontalHeader().setStretchLastSection(True)
+        header = self.invoices_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.invoices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.invoices_table.setAlternatingRowColors(True)
         self.invoices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -275,7 +284,13 @@ class SuppliersView(BaseTabbedView):
         self.payments_table = PaymentsTableWidget(self._handle_payment_enter)
         self.payments_table.setColumnCount(6)
         self.payments_table.setHorizontalHeaderLabels(["Date", "Amount", "Supplier", "Method", "Reference", "Unallocated"])
-        self.payments_table.horizontalHeader().setStretchLastSection(True)
+        header = self.payments_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.payments_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.payments_table.setAlternatingRowColors(True)
         self.payments_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -372,8 +387,12 @@ class SuppliersView(BaseTabbedView):
                 self.details_form.hide()
         elif index == 2:  # Invoices tab
             self._refresh_invoices_tab()
+            # Force table to recalculate column widths when tab becomes visible
+            self._resize_invoices_table()
         elif index == 3:  # Payments tab
             self._refresh_payments_tab()
+            # Force table to recalculate column widths when tab becomes visible
+            self._resize_payments_table()
     
     def _refresh_invoices_tab(self):
         """Refresh the invoices tab with supplier-specific invoices."""
@@ -1010,8 +1029,8 @@ class SuppliersView(BaseTabbedView):
             
             self.invoices_table.setItem(row, 5, QTableWidgetItem(invoice.get('status', '')))
         
-        # Resize columns
-        self.invoices_table.resizeColumnsToContents()
+        # Trigger resize to ensure columns fill available space
+        self._resize_invoices_table()
     
     def load_payments(self, payments: List[Dict[str, any]]):
         """Load payments into the payments table."""
@@ -1045,8 +1064,42 @@ class SuppliersView(BaseTabbedView):
                 unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
             self.payments_table.setItem(row, 5, QTableWidgetItem(f"£{unallocated:.2f}"))
         
-        # Resize columns
-        self.payments_table.resizeColumnsToContents()
+        # Trigger resize to ensure columns fill available space
+        self._resize_payments_table()
+    
+    def _resize_invoices_table(self):
+        """Resize invoices table columns to fill available space."""
+        if not self.invoices_table.isVisible():
+            # Table is not visible, schedule resize for when it becomes visible
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self._resize_invoices_table)
+            return
+        
+        header = self.invoices_table.horizontalHeader()
+        # Resize ResizeToContents columns to their optimal size
+        # This forces Qt to recalculate column widths
+        header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
+        # Restore the stretch mode for column 2 (Supplier)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        # Force the table to update its layout
+        self.invoices_table.doItemsLayout()
+    
+    def _resize_payments_table(self):
+        """Resize payments table columns to fill available space."""
+        if not self.payments_table.isVisible():
+            # Table is not visible, schedule resize for when it becomes visible
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self._resize_payments_table)
+            return
+        
+        header = self.payments_table.horizontalHeader()
+        # Resize ResizeToContents columns to their optimal size
+        # This forces Qt to recalculate column widths
+        header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
+        # Restore the stretch mode for column 2 (Supplier)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        # Force the table to update its layout
+        self.payments_table.doItemsLayout()
     
     def show_success(self, message: str):
         """Display a success message."""
@@ -1171,7 +1224,13 @@ class SuppliersView(BaseTabbedView):
         items_table = InvoiceItemsTableWidget(lambda row: edit_invoice_item(row))
         items_table.setColumnCount(6)
         items_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "VAT Code", "Line Total"])
-        items_table.horizontalHeader().setStretchLastSection(True)
+        header = items_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         items_table.setAlternatingRowColors(True)
         items_table.setMinimumHeight(200)
         items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Read-only
@@ -1377,6 +1436,38 @@ class SuppliersView(BaseTabbedView):
                     return
                 super().keyPressEvent(event)
         
+        # Search mode toggle
+        mode_layout = QHBoxLayout()
+        mode_label = QLabel("Search Mode:")
+        mode_label.setMinimumWidth(80)
+        mode_layout.addWidget(mode_label)
+        search_mode_combo = QComboBox()
+        search_mode_combo.addItems(["Products Only", "Products + Catalogue"])
+        search_mode_combo.setCurrentText("Products Only")
+        mode_layout.addWidget(search_mode_combo)
+        mode_layout.addStretch()
+        products_layout.addLayout(mode_layout)
+        
+        # Brand and Model filters
+        filter_layout = QHBoxLayout()
+        brand_label = QLabel("Brand:")
+        brand_label.setMinimumWidth(80)
+        filter_layout.addWidget(brand_label)
+        brand_combo = QComboBox()
+        brand_combo.addItem("")  # Empty option
+        brand_combo.setMinimumWidth(150)
+        filter_layout.addWidget(brand_combo)
+        
+        model_label = QLabel("Model:")
+        model_label.setMinimumWidth(80)
+        filter_layout.addWidget(model_label)
+        model_combo = QComboBox()
+        model_combo.addItem("")  # Empty option
+        model_combo.setMinimumWidth(150)
+        filter_layout.addWidget(model_combo)
+        filter_layout.addStretch()
+        products_layout.addLayout(filter_layout)
+        
         search_layout = QHBoxLayout()
         search_label = QLabel("Search:")
         search_label.setMinimumWidth(80)
@@ -1410,14 +1501,14 @@ class SuppliersView(BaseTabbedView):
         products_layout.addWidget(no_results_label)
         
         products_table = ProductSearchTableWidget(lambda row: add_to_basket_from_row(row))
-        products_table.setColumnCount(3)
-        products_table.setHorizontalHeaderLabels(["Stock #", "Description", "Type"])
-        # Set fixed column widths for consistency
-        products_table.setColumnWidth(0, 150)  # Stock #
-        products_table.setColumnWidth(2, 150)  # Type
-        products_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        products_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        products_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        products_table.setColumnCount(4)
+        products_table.setHorizontalHeaderLabels(["Stock #", "Description", "Type", "Source"])
+        # Set column resize modes - Description stretches, others resize to contents
+        header = products_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         products_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         products_table.setAlternatingRowColors(True)
@@ -1425,11 +1516,100 @@ class SuppliersView(BaseTabbedView):
         products_table.setMinimumHeight(300)
         products_layout.addWidget(products_table)
         
-        # Store filtered products for Enter key
+        # Store filtered products for Enter key (includes both products and catalogue tyres)
         filtered_products_list = []
+        
+        # Check if tyre_model is available
+        tyre_model = getattr(self, 'tyre_model', None)
+        
+        def load_brand_dropdowns():
+            """Load brand dropdown with values from both products and catalogue."""
+            brand_combo.clear()
+            brand_combo.addItem("")  # Empty option
+            
+            brands = set()
+            
+            # Get brands from products
+            if self.product_model:
+                tyre_products = self.product_model.get_tyre_products(self._current_user_id) if hasattr(self, '_current_user_id') else []
+                for product in tyre_products:
+                    if product.get('tyre_brand'):
+                        brands.add(product['tyre_brand'])
+            
+            # Get brands from catalogue
+            if tyre_model:
+                catalogue_brands = tyre_model.get_unique_brands()
+                brands.update(catalogue_brands)
+            
+            for brand in sorted(brands):
+                brand_combo.addItem(brand)
+        
+        def load_model_dropdown():
+            """Load model dropdown based on selected brand."""
+            model_combo.clear()
+            model_combo.addItem("")  # Empty option
+            
+            selected_brand = brand_combo.currentText()
+            if not selected_brand:
+                return
+            
+            models = set()
+            
+            # Get models from products
+            if self.product_model:
+                tyre_products = self.product_model.get_tyre_products(self._current_user_id) if hasattr(self, '_current_user_id') else []
+                for product in tyre_products:
+                    if product.get('tyre_brand') == selected_brand and product.get('tyre_model'):
+                        models.add(product['tyre_model'])
+            
+            # Get models from catalogue
+            if tyre_model:
+                catalogue_tyres = tyre_model.search(brand=selected_brand, limit=10000)
+                for tyre in catalogue_tyres:
+                    if tyre.get('model'):
+                        models.add(tyre['model'])
+            
+            for model in sorted(models):
+                model_combo.addItem(model)
+        
+        # Connect brand dropdown to update model dropdown
+        brand_combo.currentTextChanged.connect(lambda: load_model_dropdown())
+        
+        # Initial load of brand dropdown
+        load_brand_dropdowns()
         
         def show_add_product_dialog(product):
             """Show dialog to enter unit cost, VAT code, and quantity."""
+            # If this is a catalogue tyre, create a product from it first
+            if product.get('_source') == 'catalogue':
+                if not self.product_model or not hasattr(self, '_current_user_id'):
+                    QMessageBox.warning(dialog, "Error", "Cannot add catalogue tyre: product model not available")
+                    return
+                
+                # Create product from catalogue tyre
+                success, message, internal_product_id = self.product_model.create_from_tyre_catalogue(
+                    product, self._current_user_id
+                )
+                
+                if not success:
+                    QMessageBox.warning(dialog, "Error", f"Failed to create product from catalogue: {message}")
+                    return
+                
+                # Get the newly created product
+                new_product = self.product_model.get_by_internal_id(internal_product_id)
+                if not new_product:
+                    QMessageBox.warning(dialog, "Error", "Product created but could not be retrieved")
+                    return
+                
+                # Update product to use the created product
+                product = new_product.copy()
+                product['_source'] = 'product'
+                product['internal_id'] = internal_product_id
+                
+                # Refresh products list
+                all_products.clear()
+                all_products.extend(self.product_model.get_all(self._current_user_id))
+            
             item_dialog = QDialog(dialog)
             item_dialog.setWindowTitle("Add Product to Basket")
             item_dialog.setModal(True)
@@ -1604,21 +1784,86 @@ class SuppliersView(BaseTabbedView):
         all_products = self.product_model.get_all(self._current_user_id) if hasattr(self, '_current_user_id') else []
         
         def filter_products():
-            """Filter products based on search text."""
+            """Filter products and catalogue tyres based on search text and filters."""
             nonlocal filtered_products_list
             search_text = search_entry.text().lower().strip()
-            if not search_text:
-                filtered_products_list = all_products
-            else:
-                filtered_products_list = [
-                    p for p in all_products
-                    if search_text in p.get('stock_number', '').lower() or
-                       search_text in p.get('description', '').lower()
-                ]
+            search_mode = search_mode_combo.currentText()
+            selected_brand = brand_combo.currentText()
+            selected_model = model_combo.currentText()
+            
+            results = []
+            
+            # Search products
+            if search_mode in ["Products Only", "Products + Catalogue"]:
+                product_list = all_products
+                
+                # Apply brand filter for tyre products
+                if selected_brand:
+                    product_list = [
+                        p for p in product_list
+                        if not p.get('is_tyre') or p.get('tyre_brand') == selected_brand
+                    ]
+                
+                # Apply model filter for tyre products
+                if selected_model:
+                    product_list = [
+                        p for p in product_list
+                        if not p.get('is_tyre') or p.get('tyre_model') == selected_model
+                    ]
+                
+                # Apply search text filter
+                if search_text:
+                    product_list = [
+                        p for p in product_list
+                        if search_text in p.get('stock_number', '').lower() or
+                           search_text in p.get('description', '').lower()
+                    ]
+                
+                # Add products to results with source indicator
+                for product in product_list:
+                    product_copy = product.copy()
+                    product_copy['_source'] = 'product'
+                    results.append(product_copy)
+            
+            # Search catalogue tyres
+            if search_mode == "Products + Catalogue" and tyre_model:
+                # Build catalogue search filters
+                catalogue_filters = {}
+                if selected_brand:
+                    catalogue_filters['brand'] = selected_brand
+                if selected_model:
+                    # Note: catalogue search doesn't have model filter, so we'll filter after
+                    pass
+                
+                # Search catalogue
+                catalogue_tyres = tyre_model.search(
+                    pattern=search_text if search_text else None,
+                    limit=1000,
+                    **catalogue_filters
+                )
+                
+                # Apply model filter if specified
+                if selected_model:
+                    catalogue_tyres = [
+                        t for t in catalogue_tyres
+                        if t.get('model') == selected_model
+                    ]
+                
+                # Add catalogue tyres to results
+                for tyre in catalogue_tyres:
+                    tyre_copy = tyre.copy()
+                    tyre_copy['_source'] = 'catalogue'
+                    # Map catalogue fields to product-like structure
+                    tyre_copy['stock_number'] = tyre.get('ean', '') or tyre.get('description', '')[:50]
+                    tyre_copy['description'] = tyre.get('description', '')
+                    tyre_copy['type'] = tyre.get('product_type', '')
+                    results.append(tyre_copy)
+            
+            filtered_products_list = results
             
             # Show/hide no results message
             if len(filtered_products_list) == 0:
-                no_results_label.setText("No products exist that match the search.")
+                no_results_label.setText("No products or tyres exist that match the search.")
                 no_results_label.show()
                 products_table.hide()
                 products_table.setRowCount(0)
@@ -1627,10 +1872,13 @@ class SuppliersView(BaseTabbedView):
                 products_table.show()
                 
                 products_table.setRowCount(len(filtered_products_list))
-                for row, product in enumerate(filtered_products_list):
-                    products_table.setItem(row, 0, QTableWidgetItem(product.get('stock_number', '')))
-                    products_table.setItem(row, 1, QTableWidgetItem(product.get('description', '')))
-                    products_table.setItem(row, 2, QTableWidgetItem(product.get('type', '')))
+                for row, item in enumerate(filtered_products_list):
+                    products_table.setItem(row, 0, QTableWidgetItem(item.get('stock_number', '')))
+                    products_table.setItem(row, 1, QTableWidgetItem(item.get('description', '')))
+                    products_table.setItem(row, 2, QTableWidgetItem(item.get('type', '')))
+                    # Add source indicator
+                    source_text = "[Catalogue]" if item.get('_source') == 'catalogue' else ""
+                    products_table.setItem(row, 3, QTableWidgetItem(source_text))
                 
                 # Select and highlight first row if results exist
                 products_table.selectRow(0)
@@ -1694,12 +1942,15 @@ class SuppliersView(BaseTabbedView):
             basket_items.append(edit_item.copy())
             update_basket_table()
         
-        # Connect search field - trigger on Enter key
+        # Connect search field and filters - trigger search
         def handle_search_enter():
             """Handle Enter key in search field."""
             filter_products()
         
         search_entry.returnPressed.connect(handle_search_enter)
+        search_mode_combo.currentTextChanged.connect(filter_products)
+        brand_combo.currentTextChanged.connect(filter_products)
+        model_combo.currentTextChanged.connect(filter_products)
         
         # Don't load all products initially - wait for search
         filtered_products_list = []
@@ -1922,7 +2173,13 @@ class SuppliersView(BaseTabbedView):
         items_table = InvoiceItemsTableWidget(lambda row: edit_invoice_item(row))
         items_table.setColumnCount(6)
         items_table.setHorizontalHeaderLabels(["Stock #", "Description", "Quantity", "Unit Price", "VAT Code", "Line Total"])
-        items_table.horizontalHeader().setStretchLastSection(True)
+        header = items_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         items_table.setAlternatingRowColors(True)
         items_table.setMinimumHeight(200)
         items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # Read-only

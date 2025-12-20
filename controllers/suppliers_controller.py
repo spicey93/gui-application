@@ -27,7 +27,8 @@ class SuppliersController(QObject):
     def __init__(self, suppliers_view: "SuppliersView", supplier_model: "Supplier", user_id: int,
                  invoice_controller: Optional["InvoiceController"] = None,
                  payment_controller: Optional["PaymentController"] = None,
-                 product_model: Optional["Product"] = None):
+                 product_model: Optional["Product"] = None,
+                 tyre_model=None):
         """Initialize the suppliers controller."""
         super().__init__()
         self.suppliers_view = suppliers_view
@@ -36,6 +37,7 @@ class SuppliersController(QObject):
         self.invoice_controller = invoice_controller
         self.payment_controller = payment_controller
         self.product_model = product_model
+        self.tyre_model = tyre_model
         
         # Connect view signals to controller handlers
         self.suppliers_view.dashboard_requested.connect(self.handle_dashboard)
@@ -71,7 +73,7 @@ class SuppliersController(QObject):
         if self.invoice_controller and self.payment_controller:
             self.suppliers_view.set_controllers(
                 self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id,
-                self.product_model
+                self.product_model, self.tyre_model
             )
         
         # Load initial suppliers
@@ -87,7 +89,7 @@ class SuppliersController(QObject):
         if self.invoice_controller and self.payment_controller:
             self.suppliers_view.set_controllers(
                 self.invoice_controller, self.payment_controller, self.supplier_model, self.user_id,
-                self.product_model
+                self.product_model, self.tyre_model
             )
         self.refresh_suppliers()
     

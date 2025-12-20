@@ -42,11 +42,11 @@ class InventoryView(BaseTabbedView):
         self.inventory_table.setAlternatingRowColors(True)
         self.inventory_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
-        # Set column widths
+        # Set column resize modes - Description stretches, others resize to contents
         header = self.inventory_table.horizontalHeader()
-        header.resizeSection(0, 150)
-        header.resizeSection(1, 300)
-        header.resizeSection(2, 150)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         
         # Enable keyboard navigation
         self.inventory_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -89,12 +89,7 @@ class InventoryView(BaseTabbedView):
             stock_qty_str = f"{stock_qty:.2f}" if isinstance(stock_qty, (int, float)) else str(stock_qty)
             self.inventory_table.setItem(row, 2, QTableWidgetItem(stock_qty_str))
         
-        # Resize columns to content
-        self.inventory_table.resizeColumnsToContents()
-        header = self.inventory_table.horizontalHeader()
-        header.resizeSection(0, 150)
-        header.resizeSection(1, 300)
-        header.resizeSection(2, 150)
+        # Columns will auto-resize based on their resize modes
         
         # Auto-select first row and set focus to table if data exists
         if len(inventory_items) > 0:

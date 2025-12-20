@@ -94,6 +94,7 @@ class TyreCatalogueView(QDialog):
         pattern_layout.addWidget(pattern_label)
         self.pattern_entry = QLineEdit()
         self.pattern_entry.setPlaceholderText("Enter pattern...")
+        self.pattern_entry.setStyleSheet("background-color: white; color: black;")
         self.pattern_entry.returnPressed.connect(self._apply_filters)
         pattern_layout.addWidget(self.pattern_entry)
         filters_content_layout.addLayout(pattern_layout)
@@ -106,6 +107,7 @@ class TyreCatalogueView(QDialog):
         brand_layout.addWidget(brand_label)
         self.brand_combo = QComboBox()
         self.brand_combo.setEditable(False)
+        self.brand_combo.setStyleSheet("background-color: white; color: black;")
         self.brand_combo.addItem("")  # Empty option
         brand_layout.addWidget(self.brand_combo)
         filters_content_layout.addLayout(brand_layout)
@@ -118,6 +120,7 @@ class TyreCatalogueView(QDialog):
         oe_layout.addWidget(oe_label)
         self.oe_combo = QComboBox()
         self.oe_combo.setEditable(False)
+        self.oe_combo.setStyleSheet("background-color: white; color: black;")
         self.oe_combo.addItem("")  # Empty option
         oe_layout.addWidget(self.oe_combo)
         filters_content_layout.addLayout(oe_layout)
@@ -141,6 +144,7 @@ class TyreCatalogueView(QDialog):
         width_layout.addWidget(width_label)
         self.width_entry = QLineEdit()
         self.width_entry.setPlaceholderText("Enter width...")
+        self.width_entry.setStyleSheet("background-color: white; color: black;")
         self.width_entry.returnPressed.connect(self._apply_filters)
         width_layout.addWidget(self.width_entry)
         filters_content_layout.addLayout(width_layout)
@@ -153,6 +157,7 @@ class TyreCatalogueView(QDialog):
         profile_layout.addWidget(profile_label)
         self.profile_entry = QLineEdit()
         self.profile_entry.setPlaceholderText("Enter profile...")
+        self.profile_entry.setStyleSheet("background-color: white; color: black;")
         self.profile_entry.returnPressed.connect(self._apply_filters)
         profile_layout.addWidget(self.profile_entry)
         filters_content_layout.addLayout(profile_layout)
@@ -165,6 +170,7 @@ class TyreCatalogueView(QDialog):
         diameter_layout.addWidget(diameter_label)
         self.diameter_entry = QLineEdit()
         self.diameter_entry.setPlaceholderText("Enter diameter...")
+        self.diameter_entry.setStyleSheet("background-color: white; color: black;")
         self.diameter_entry.returnPressed.connect(self._apply_filters)
         diameter_layout.addWidget(self.diameter_entry)
         filters_content_layout.addLayout(diameter_layout)
@@ -177,6 +183,7 @@ class TyreCatalogueView(QDialog):
         vehicle_type_layout.addWidget(vehicle_type_label)
         self.vehicle_type_combo = QComboBox()
         self.vehicle_type_combo.setEditable(False)
+        self.vehicle_type_combo.setStyleSheet("background-color: white; color: black;")
         self.vehicle_type_combo.addItem("")  # Empty option
         vehicle_type_layout.addWidget(self.vehicle_type_combo)
         filters_content_layout.addLayout(vehicle_type_layout)
@@ -189,6 +196,7 @@ class TyreCatalogueView(QDialog):
         product_type_layout.addWidget(product_type_label)
         self.product_type_combo = QComboBox()
         self.product_type_combo.setEditable(False)
+        self.product_type_combo.setStyleSheet("background-color: white; color: black;")
         self.product_type_combo.addItem("")  # Empty option
         product_type_layout.addWidget(self.product_type_combo)
         filters_content_layout.addLayout(product_type_layout)
@@ -201,6 +209,7 @@ class TyreCatalogueView(QDialog):
         ean_layout.addWidget(ean_label)
         self.ean_entry = QLineEdit()
         self.ean_entry.setPlaceholderText("Enter EAN...")
+        self.ean_entry.setStyleSheet("background-color: white; color: black;")
         self.ean_entry.returnPressed.connect(self._apply_filters)
         ean_layout.addWidget(self.ean_entry)
         filters_content_layout.addLayout(ean_layout)
@@ -213,6 +222,7 @@ class TyreCatalogueView(QDialog):
         speed_rating_layout.addWidget(speed_rating_label)
         self.speed_rating_combo = QComboBox()
         self.speed_rating_combo.setEditable(False)
+        self.speed_rating_combo.setStyleSheet("background-color: white; color: black;")
         self.speed_rating_combo.addItem("")  # Empty option
         speed_rating_layout.addWidget(self.speed_rating_combo)
         filters_content_layout.addLayout(speed_rating_layout)
@@ -225,6 +235,7 @@ class TyreCatalogueView(QDialog):
         load_rating_layout.addWidget(load_rating_label)
         self.load_rating_combo = QComboBox()
         self.load_rating_combo.setEditable(False)
+        self.load_rating_combo.setStyleSheet("background-color: white; color: black;")
         self.load_rating_combo.addItem("")  # Empty option
         load_rating_layout.addWidget(self.load_rating_combo)
         filters_content_layout.addLayout(load_rating_layout)
@@ -237,6 +248,7 @@ class TyreCatalogueView(QDialog):
         rolling_resistance_layout.addWidget(rolling_resistance_label)
         self.rolling_resistance_combo = QComboBox()
         self.rolling_resistance_combo.setEditable(False)
+        self.rolling_resistance_combo.setStyleSheet("background-color: white; color: black;")
         self.rolling_resistance_combo.addItem("")  # Empty option
         rolling_resistance_layout.addWidget(self.rolling_resistance_combo)
         filters_content_layout.addLayout(rolling_resistance_layout)
@@ -249,6 +261,7 @@ class TyreCatalogueView(QDialog):
         wet_grip_layout.addWidget(wet_grip_label)
         self.wet_grip_combo = QComboBox()
         self.wet_grip_combo.setEditable(False)
+        self.wet_grip_combo.setStyleSheet("background-color: white; color: black;")
         self.wet_grip_combo.addItem("")  # Empty option
         wet_grip_layout.addWidget(self.wet_grip_combo)
         filters_content_layout.addLayout(wet_grip_layout)
@@ -306,15 +319,16 @@ class TyreCatalogueView(QDialog):
         # Connect double-click to show details
         self.results_table.itemDoubleClicked.connect(self._on_tyre_double_clicked)
         
-        # Set column widths
+        # Set column resize modes - Description stretches, others resize to contents
         header = self.results_table.horizontalHeader()
-        header.resizeSection(0, 300)  # Description
-        header.resizeSection(1, 120)  # Brand
-        header.resizeSection(2, 120)  # Pattern
-        header.resizeSection(3, 100)  # Size
-        header.resizeSection(4, 60)   # Speed
-        header.resizeSection(5, 60)   # Load
-        header.resizeSection(6, 80)   # Run Flat
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         
         results_layout.addWidget(self.results_table, stretch=1)
         
@@ -524,7 +538,7 @@ class TyreCatalogueView(QDialog):
                 self.results_table.setItem(row, 7, QTableWidgetItem(ean_val))
             
             # Resize columns to content
-            self.results_table.resizeColumnsToContents()
+            # Columns will auto-resize based on their resize modes
     
     def _on_tyre_double_clicked(self, item: QTableWidgetItem):
         """Handle double-click on tyre row to show details."""

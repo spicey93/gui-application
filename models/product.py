@@ -32,7 +32,7 @@ class Product:
             table_exists = cursor.fetchone() is not None
             
             if not table_exists:
-                # Create new table with proper constraints
+                # Create new table with proper constraints (including tyre columns)
                 cursor.execute("""
                     CREATE TABLE products (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,10 +43,30 @@ class Product:
                         type TEXT,
                         stock_quantity REAL NOT NULL DEFAULT 0.0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_tyre INTEGER NOT NULL DEFAULT 0,
+                        tyre_brand TEXT,
+                        tyre_model TEXT,
+                        tyre_pattern TEXT,
+                        tyre_width TEXT,
+                        tyre_profile TEXT,
+                        tyre_diameter TEXT,
+                        tyre_speed_rating TEXT,
+                        tyre_load_index TEXT,
+                        tyre_oe_fitment TEXT,
+                        tyre_ean TEXT,
+                        tyre_manufacturer_code TEXT,
+                        tyre_vehicle_type TEXT,
+                        tyre_product_type TEXT,
+                        tyre_rolling_resistance TEXT,
+                        tyre_wet_grip TEXT,
+                        tyre_run_flat TEXT,
+                        tyre_url TEXT,
+                        tyre_brand_url TEXT,
                         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                         UNIQUE(user_id, user_product_id)
                     )
                 """)
+                column_names = []  # Empty list for new table
             else:
                 # Table exists - check schema and migrate if needed
                 cursor.execute("PRAGMA table_info(products)")
@@ -239,6 +259,43 @@ class Product:
                             # If migration fails, at least ensure stock_number exists
                             pass
             
+            # Add tyre-specific columns if they don't exist (only for existing tables)
+            if table_exists:
+                # Refresh column_names after potential migrations
+                cursor.execute("PRAGMA table_info(products)")
+                column_info = cursor.fetchall()
+                column_names = [row[1] for row in column_info]
+                
+                tyre_columns = [
+                    ('is_tyre', 'INTEGER NOT NULL DEFAULT 0'),
+                    ('tyre_brand', 'TEXT'),
+                    ('tyre_model', 'TEXT'),
+                    ('tyre_pattern', 'TEXT'),
+                    ('tyre_width', 'TEXT'),
+                    ('tyre_profile', 'TEXT'),
+                    ('tyre_diameter', 'TEXT'),
+                    ('tyre_speed_rating', 'TEXT'),
+                    ('tyre_load_index', 'TEXT'),
+                    ('tyre_oe_fitment', 'TEXT'),
+                    ('tyre_ean', 'TEXT'),
+                    ('tyre_manufacturer_code', 'TEXT'),
+                    ('tyre_vehicle_type', 'TEXT'),
+                    ('tyre_product_type', 'TEXT'),
+                    ('tyre_rolling_resistance', 'TEXT'),
+                    ('tyre_wet_grip', 'TEXT'),
+                    ('tyre_run_flat', 'TEXT'),
+                    ('tyre_url', 'TEXT'),
+                    ('tyre_brand_url', 'TEXT')
+                ]
+                
+                for col_name, col_def in tyre_columns:
+                    if col_name not in column_names:
+                        try:
+                            cursor.execute(f"ALTER TABLE products ADD COLUMN {col_name} {col_def}")
+                        except sqlite3.OperationalError:
+                            # Column might already exist or there's a constraint issue
+                            pass
+            
             # Clean up orphaned products
             try:
                 cursor.execute("""
@@ -251,7 +308,32 @@ class Product:
             
             conn.commit()
     
-    def create(self, stock_number: str, description: str, type: str, user_id: int) -> Tuple[bool, str]:
+    def create(
+        self, 
+        stock_number: str, 
+        description: str, 
+        type: str, 
+        user_id: int,
+        is_tyre: bool = False,
+        tyre_brand: Optional[str] = None,
+        tyre_model: Optional[str] = None,
+        tyre_pattern: Optional[str] = None,
+        tyre_width: Optional[str] = None,
+        tyre_profile: Optional[str] = None,
+        tyre_diameter: Optional[str] = None,
+        tyre_speed_rating: Optional[str] = None,
+        tyre_load_index: Optional[str] = None,
+        tyre_oe_fitment: Optional[str] = None,
+        tyre_ean: Optional[str] = None,
+        tyre_manufacturer_code: Optional[str] = None,
+        tyre_vehicle_type: Optional[str] = None,
+        tyre_product_type: Optional[str] = None,
+        tyre_rolling_resistance: Optional[str] = None,
+        tyre_wet_grip: Optional[str] = None,
+        tyre_run_flat: Optional[str] = None,
+        tyre_url: Optional[str] = None,
+        tyre_brand_url: Optional[str] = None
+    ) -> Tuple[bool, str]:
         """
         Create a new product.
         
@@ -260,6 +342,8 @@ class Product:
             description: Product description (optional)
             type: Product type (optional)
             user_id: ID of the user creating the product
+            is_tyre: Whether this is a tyre product
+            tyre_*: Tyre-specific fields (optional)
         
         Returns:
             Tuple of (success: bool, message: str)
@@ -298,10 +382,24 @@ class Product:
                 """, (user_id,))
                 next_user_product_id = cursor.fetchone()[0]
                 
-                cursor.execute(
-                    "INSERT INTO products (stock_number, description, type, user_id, user_product_id, stock_quantity) VALUES (?, ?, ?, ?, ?, 0.0)",
-                    (stock_number, description, type, user_id, next_user_product_id)
-                )
+                # Prepare tyre fields (tyre_run_flat is already a string or None)
+                
+                cursor.execute("""
+                    INSERT INTO products (
+                        stock_number, description, type, user_id, user_product_id, stock_quantity,
+                        is_tyre, tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                        tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                        tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                        tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                    ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    stock_number, description, type, user_id, next_user_product_id,
+                    1 if is_tyre else 0,
+                    tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                    tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                    tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                ))
                 conn.commit()
                 product_id = cursor.lastrowid
             return True, f"Product created successfully (ID: {next_user_product_id})"
@@ -319,10 +417,22 @@ class Product:
                             WHERE user_id = ?
                         """, (user_id,))
                         next_user_product_id = cursor.fetchone()[0]
-                        cursor.execute(
-                            "INSERT INTO products (stock_number, description, type, user_id, user_product_id, stock_quantity) VALUES (?, ?, ?, ?, ?, 0.0)",
-                            (stock_number, description, type, user_id, next_user_product_id)
-                        )
+                        cursor.execute("""
+                            INSERT INTO products (
+                                stock_number, description, type, user_id, user_product_id, stock_quantity,
+                                is_tyre, tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                                tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                                tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                                tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                            ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            stock_number, description, type, user_id, next_user_product_id,
+                            1 if is_tyre else 0,
+                            tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                            tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                            tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                            tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                        ))
                         conn.commit()
                     return True, f"Product created successfully (ID: {next_user_product_id})"
                 except Exception as retry_e:
@@ -353,7 +463,12 @@ class Product:
                     description,
                     type,
                     COALESCE(stock_quantity, 0.0) as stock_quantity,
-                    created_at 
+                    created_at,
+                    is_tyre,
+                    tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                    tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                    tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
                 FROM products 
                 WHERE user_id = ? 
                 ORDER BY user_product_id
@@ -387,7 +502,12 @@ class Product:
                     description,
                     type,
                     COALESCE(stock_quantity, 0.0) as stock_quantity,
-                    created_at 
+                    created_at,
+                    is_tyre,
+                    tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                    tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                    tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
                 FROM products 
                 WHERE user_product_id = ? AND user_id = ?
             """, (product_id, user_id))
@@ -397,7 +517,33 @@ class Product:
         except Exception:
             return None
     
-    def update(self, product_id: int, stock_number: str, description: str, type: str, user_id: int) -> Tuple[bool, str]:
+    def update(
+        self, 
+        product_id: int, 
+        stock_number: str, 
+        description: str, 
+        type: str, 
+        user_id: int,
+        is_tyre: Optional[bool] = None,
+        tyre_brand: Optional[str] = None,
+        tyre_model: Optional[str] = None,
+        tyre_pattern: Optional[str] = None,
+        tyre_width: Optional[str] = None,
+        tyre_profile: Optional[str] = None,
+        tyre_diameter: Optional[str] = None,
+        tyre_speed_rating: Optional[str] = None,
+        tyre_load_index: Optional[str] = None,
+        tyre_oe_fitment: Optional[str] = None,
+        tyre_ean: Optional[str] = None,
+        tyre_manufacturer_code: Optional[str] = None,
+        tyre_vehicle_type: Optional[str] = None,
+        tyre_product_type: Optional[str] = None,
+        tyre_rolling_resistance: Optional[str] = None,
+        tyre_wet_grip: Optional[str] = None,
+        tyre_run_flat: Optional[str] = None,
+        tyre_url: Optional[str] = None,
+        tyre_brand_url: Optional[str] = None
+    ) -> Tuple[bool, str]:
         """
         Update a product by user_product_id.
         
@@ -407,6 +553,8 @@ class Product:
             description: New description
             type: New type
             user_id: ID of the user
+            is_tyre: Whether this is a tyre product (optional, None means don't change)
+            tyre_*: Tyre-specific fields (optional, None means don't change)
         
         Returns:
             Tuple of (success: bool, message: str)
@@ -433,10 +581,49 @@ class Product:
                 conn.close()
                 return False, "Product not found"
             
-            cursor.execute(
-                "UPDATE products SET stock_number = ?, description = ?, type = ? WHERE user_product_id = ? AND user_id = ?",
-                (stock_number, description, type, product_id, user_id)
-            )
+            # Build update query dynamically based on provided fields
+            update_fields = ["stock_number = ?", "description = ?", "type = ?"]
+            update_values = [stock_number, description, type]
+            
+            if is_tyre is not None:
+                update_fields.append("is_tyre = ?")
+                update_values.append(1 if is_tyre else 0)
+            
+            tyre_fields = {
+                'tyre_brand': tyre_brand,
+                'tyre_model': tyre_model,
+                'tyre_pattern': tyre_pattern,
+                'tyre_width': tyre_width,
+                'tyre_profile': tyre_profile,
+                'tyre_diameter': tyre_diameter,
+                'tyre_speed_rating': tyre_speed_rating,
+                'tyre_load_index': tyre_load_index,
+                'tyre_oe_fitment': tyre_oe_fitment,
+                'tyre_ean': tyre_ean,
+                'tyre_manufacturer_code': tyre_manufacturer_code,
+                'tyre_vehicle_type': tyre_vehicle_type,
+                'tyre_product_type': tyre_product_type,
+                'tyre_rolling_resistance': tyre_rolling_resistance,
+                'tyre_wet_grip': tyre_wet_grip,
+                'tyre_run_flat': tyre_run_flat,
+                'tyre_url': tyre_url,
+                'tyre_brand_url': tyre_brand_url
+            }
+            
+            for field_name, field_value in tyre_fields.items():
+                if field_value is not None:
+                    update_fields.append(f"{field_name} = ?")
+                    update_values.append(field_value)
+            
+            update_values.extend([product_id, user_id])
+            
+            query = f"""
+                UPDATE products 
+                SET {', '.join(update_fields)}
+                WHERE user_product_id = ? AND user_id = ?
+            """
+            
+            cursor.execute(query, update_values)
             
             if cursor.rowcount == 0:
                 conn.close()
@@ -551,7 +738,12 @@ class Product:
                         description,
                         type,
                         COALESCE(stock_quantity, 0.0) as stock_quantity,
-                        created_at 
+                        created_at,
+                        is_tyre,
+                        tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                        tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                        tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                        tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
                     FROM products 
                     WHERE id = ?
                 """, (internal_product_id,))
@@ -559,4 +751,156 @@ class Product:
                 return dict(row) if row else None
         except Exception:
             return None
+    
+    def get_tyre_products(self, user_id: int) -> List[Dict[str, any]]:
+        """
+        Get all tyre products for a specific user.
+        
+        Args:
+            user_id: ID of the user
+        
+        Returns:
+            List of tyre product dictionaries
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 
+                    id as internal_id,
+                    COALESCE(user_product_id, id) as id,
+                    stock_number, 
+                    description,
+                    type,
+                    COALESCE(stock_quantity, 0.0) as stock_quantity,
+                    created_at,
+                    is_tyre,
+                    tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                    tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                    tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                FROM products 
+                WHERE user_id = ? AND is_tyre = 1
+                ORDER BY user_product_id
+            """, (user_id,))
+            rows = cursor.fetchall()
+            conn.close()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            return []
+    
+    def get_unique_tyre_brands(self, user_id: int) -> List[str]:
+        """
+        Get unique tyre brands from user's tyre products.
+        
+        Args:
+            user_id: ID of the user
+        
+        Returns:
+            List of unique brand names
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT tyre_brand FROM products
+                WHERE user_id = ? AND is_tyre = 1
+                AND tyre_brand IS NOT NULL AND tyre_brand != ''
+                ORDER BY tyre_brand
+            """, (user_id,))
+            rows = cursor.fetchall()
+            conn.close()
+            return [row[0] for row in rows if row[0]]
+        except Exception:
+            return []
+    
+    def get_tyre_models_by_brand(self, user_id: int, brand: str) -> List[str]:
+        """
+        Get unique tyre models for a specific brand from user's tyre products.
+        
+        Args:
+            user_id: ID of the user
+            brand: Brand name to filter by
+        
+        Returns:
+            List of unique model names
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT tyre_model FROM products
+                WHERE user_id = ? AND is_tyre = 1 AND tyre_brand = ?
+                AND tyre_model IS NOT NULL AND tyre_model != ''
+                ORDER BY tyre_model
+            """, (user_id, brand))
+            rows = cursor.fetchall()
+            conn.close()
+            return [row[0] for row in rows if row[0]]
+        except Exception:
+            return []
+    
+    def create_from_tyre_catalogue(self, tyre_data: Dict[str, any], user_id: int) -> Tuple[bool, str, Optional[int]]:
+        """
+        Create a product from a tyre catalogue entry.
+        
+        Args:
+            tyre_data: Dictionary with tyre data from catalogue
+            user_id: ID of the user creating the product
+        
+        Returns:
+            Tuple of (success: bool, message: str, internal_product_id: Optional[int])
+        """
+        # Use EAN as stock_number if available, otherwise use description
+        stock_number = tyre_data.get('ean', '') or tyre_data.get('description', '')[:50] or 'TYRE'
+        description = tyre_data.get('description', '')
+        
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Calculate the next user_product_id for this user
+                cursor.execute("""
+                    SELECT COALESCE(MAX(user_product_id), 0) + 1 
+                    FROM products 
+                    WHERE user_id = ?
+                """, (user_id,))
+                next_user_product_id = cursor.fetchone()[0]
+                
+                cursor.execute("""
+                    INSERT INTO products (
+                        stock_number, description, type, user_id, user_product_id, stock_quantity,
+                        is_tyre, tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
+                        tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
+                        tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
+                        tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                    ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    stock_number, description, tyre_data.get('product_type', ''), user_id, next_user_product_id,
+                    1,  # is_tyre = True
+                    tyre_data.get('brand', ''),
+                    tyre_data.get('model', ''),
+                    tyre_data.get('pattern', ''),
+                    tyre_data.get('width', ''),
+                    tyre_data.get('profile', ''),
+                    tyre_data.get('diameter', ''),
+                    tyre_data.get('speed_rating', ''),
+                    tyre_data.get('load_index', ''),
+                    tyre_data.get('oe_fitment', ''),
+                    tyre_data.get('ean', ''),
+                    tyre_data.get('manufacturer_code', ''),
+                    tyre_data.get('vehicle_type', ''),
+                    tyre_data.get('product_type', ''),
+                    tyre_data.get('rolling_resistance', ''),
+                    tyre_data.get('wet_grip', ''),
+                    tyre_data.get('run_flat', ''),
+                    tyre_data.get('tyre_url', ''),
+                    tyre_data.get('brand_url', '')
+                ))
+                conn.commit()
+                internal_product_id = cursor.lastrowid
+                return True, f"Product created successfully (ID: {next_user_product_id})", internal_product_id
+        except Exception as e:
+            return False, f"Error creating product from catalogue: {str(e)}", None
 

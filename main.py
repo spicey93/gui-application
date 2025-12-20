@@ -359,7 +359,8 @@ class Application(QMainWindow):
                 user_id,
                 self.invoice_controller,
                 self.payment_controller,
-                self.product_model
+                self.product_model,
+                self.tyre_model
             )
             self.suppliers_controller.dashboard_requested.connect(self.on_back_to_dashboard)
             self.suppliers_controller.customers_requested.connect(self.on_customers)
