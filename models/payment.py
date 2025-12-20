@@ -206,7 +206,7 @@ class Payment:
     
     def delete(self, payment_id: int, user_id: int) -> Tuple[bool, str]:
         """
-        Delete a payment (removes allocations).
+        Delete a payment (only if no allocations).
         
         Args:
             payment_id: Payment ID
@@ -224,8 +224,14 @@ class Payment:
                 if not cursor.fetchone():
                     return False, "Payment not found"
                 
-                # Delete allocations first
-                cursor.execute("DELETE FROM payment_allocations WHERE payment_id = ?", (payment_id,))
+                # Check if any allocations exist
+                cursor.execute("""
+                    SELECT COUNT(*) FROM payment_allocations WHERE payment_id = ?
+                """, (payment_id,))
+                allocation_count = cursor.fetchone()[0]
+                
+                if allocation_count > 0:
+                    return False, "Cannot delete payment: payment has been allocated to invoices. Please unallocate first."
                 
                 # Delete payment
                 cursor.execute("DELETE FROM payments WHERE id = ? AND user_id = ?", (payment_id, user_id))

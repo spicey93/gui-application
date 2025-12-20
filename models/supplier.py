@@ -371,7 +371,8 @@ class Supplier:
     
     def get_outstanding_balance(self, supplier_id: int, user_id: int) -> float:
         """
-        Calculate outstanding balance for a supplier (sum of all unpaid invoices).
+        Calculate outstanding balance for a supplier.
+        Outstanding balance = Total invoices - Total payments (all payments, regardless of allocation).
         
         Args:
             supplier_id: User supplier ID (user_supplier_id)
@@ -394,30 +395,27 @@ class Supplier:
                 
                 internal_supplier_id = result[0]
                 
-                # Get all invoices for this supplier
+                # Get total of all invoices for this supplier
                 cursor.execute("""
-                    SELECT id, total FROM invoices 
+                    SELECT COALESCE(SUM(total), 0.0)
+                    FROM invoices 
                     WHERE supplier_id = ? AND user_id = ?
                 """, (internal_supplier_id, user_id))
-                invoices = cursor.fetchall()
+                total_invoiced = cursor.fetchone()[0] or 0.0
                 
-                if not invoices:
-                    return 0.0
+                # Get total of all payments for this supplier (regardless of allocation)
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0.0)
+                    FROM payments 
+                    WHERE supplier_id = ? AND user_id = ?
+                """, (internal_supplier_id, user_id))
+                total_payments = cursor.fetchone()[0] or 0.0
                 
-                # Calculate outstanding balance for each invoice
-                total_outstanding = 0.0
-                for invoice_id, invoice_total in invoices:
-                    # Get allocated payments
-                    cursor.execute("""
-                        SELECT COALESCE(SUM(amount_allocated), 0.0)
-                        FROM payment_allocations
-                        WHERE invoice_id = ?
-                    """, (invoice_id,))
-                    allocated = cursor.fetchone()[0]
-                    outstanding = max(0.0, invoice_total - allocated)
-                    total_outstanding += outstanding
+                # Outstanding balance = Total invoices - Total payments
+                # Negative values indicate overpayment
+                outstanding = total_invoiced - total_payments
                 
-                return total_outstanding
+                return outstanding
         except Exception:
             return 0.0
     

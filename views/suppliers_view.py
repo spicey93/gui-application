@@ -517,8 +517,15 @@ class SuppliersView(BaseTabbedView):
         if payment_id:
             self._allocate_payment_dialog(None, self.selected_supplier_id, payment_id)
     
-    def _show_supplier_details(self, supplier_id: int, account_number: str, name: str):
-        """Show supplier details in a popup dialog with tabs."""
+    def _show_supplier_details(self, supplier_id: int, account_number: str, name: str, initial_tab: int = 0):
+        """Show supplier details in a popup dialog with tabs.
+        
+        Args:
+            supplier_id: Supplier ID
+            account_number: Supplier account number
+            name: Supplier name
+            initial_tab: Initial tab index to show (0=Info, 1=Invoices, 2=Payments, 3=Actions)
+        """
         dialog = QDialog(self)
         dialog.setWindowTitle("Supplier Details")
         dialog.setModal(True)
@@ -649,6 +656,10 @@ class SuppliersView(BaseTabbedView):
                 lambda item: self._view_invoice_dialog(dialog, supplier_id, invoices_list[item.row()]['id'])
             )
         
+        # Select first row if available
+        if invoices_list:
+            invoices_table.selectRow(0)
+        
         invoices_table.resizeColumnsToContents()
         invoices_layout.addWidget(invoices_table)
         notebook.addTab(invoices_frame, "Invoices (Ctrl+2)")
@@ -678,10 +689,11 @@ class SuppliersView(BaseTabbedView):
                 self._allocate_payment_dialog(dialog, supplier_id, payments_list[row]['id'])
         
         payments_table = PaymentsTableWidget(handle_payment_enter)
-        payments_table.setColumnCount(6)
-        payments_table.setHorizontalHeaderLabels(["Date", "Amount", "Method", "Reference", "Unallocated", "Delete"])
+        payments_table.setColumnCount(7)
+        payments_table.setHorizontalHeaderLabels(["Date", "Amount", "Method", "Reference", "Unallocated", "Allocations", "Delete"])
         payments_table.horizontalHeader().setStretchLastSection(False)
-        payments_table.setColumnWidth(5, 80)  # Delete column width
+        payments_table.setColumnWidth(5, 100)  # Allocations column width
+        payments_table.setColumnWidth(6, 80)  # Delete column width
         payments_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         payments_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         payments_table.setAlternatingRowColors(True)
@@ -693,25 +705,46 @@ class SuppliersView(BaseTabbedView):
             for row, payment in enumerate(payments_list):
                 payment_id = payment['id']
                 unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
+                allocations = self.payment_controller.get_payment_allocations(payment_id)
+                
                 payments_table.setItem(row, 0, QTableWidgetItem(payment['payment_date']))
                 payments_table.setItem(row, 1, QTableWidgetItem(f"£{payment['amount']:.2f}"))
                 payments_table.setItem(row, 2, QTableWidgetItem(payment.get('payment_method', 'Cash')))
                 payments_table.setItem(row, 3, QTableWidgetItem(payment.get('reference', '')))
                 payments_table.setItem(row, 4, QTableWidgetItem(f"£{unallocated:.2f}"))
                 
-                # Delete button
+                # Allocations button/view
+                if allocations:
+                    alloc_btn = QPushButton(f"View ({len(allocations)})")
+                    alloc_btn.setMaximumWidth(90)
+                    alloc_btn.clicked.connect(
+                        lambda checked, pay_id=payment_id: 
+                        self._view_payment_allocations_dialog(dialog, supplier_id, pay_id)
+                    )
+                    payments_table.setCellWidget(row, 5, alloc_btn)
+                else:
+                    payments_table.setItem(row, 5, QTableWidgetItem("None"))
+                
+                # Delete button (disabled if allocated)
                 delete_btn = QPushButton("Delete")
                 delete_btn.setMaximumWidth(70)
+                if allocations:
+                    delete_btn.setEnabled(False)
+                    delete_btn.setToolTip("Cannot delete payment with allocations. Unallocate first.")
                 delete_btn.clicked.connect(
                     lambda checked, pay_id=payment_id, pay_date=payment['payment_date'], pay_amt=payment['amount']: 
                     self._delete_payment_dialog(dialog, supplier_id, pay_id, pay_date, pay_amt)
                 )
-                payments_table.setCellWidget(row, 5, delete_btn)
+                payments_table.setCellWidget(row, 6, delete_btn)
             
             # Double-click to allocate payment
             payments_table.itemDoubleClicked.connect(
                 lambda item: self._allocate_payment_dialog(dialog, supplier_id, payments_list[item.row()]['id'])
             )
+        
+        # Select first row if available
+        if payments_list:
+            payments_table.selectRow(0)
         
         payments_table.resizeColumnsToContents()
         payments_layout.addWidget(payments_table)
@@ -795,6 +828,9 @@ class SuppliersView(BaseTabbedView):
         for i, shortcut in enumerate(tab_shortcuts):
             if i < notebook.count():
                 shortcut.activated.connect(lambda idx=i: notebook.setCurrentIndex(idx))
+        
+        # Set initial tab
+        notebook.setCurrentIndex(initial_tab)
         
         # Set focus to account entry
         account_entry.setFocus()
@@ -1029,6 +1065,10 @@ class SuppliersView(BaseTabbedView):
             
             self.invoices_table.setItem(row, 5, QTableWidgetItem(invoice.get('status', '')))
         
+        # Select first row if available
+        if len(invoices) > 0:
+            self.invoices_table.selectRow(0)
+        
         # Trigger resize to ensure columns fill available space
         self._resize_invoices_table()
     
@@ -1063,6 +1103,10 @@ class SuppliersView(BaseTabbedView):
             if self.payment_controller:
                 unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
             self.payments_table.setItem(row, 5, QTableWidgetItem(f"£{unallocated:.2f}"))
+        
+        # Select first row if available
+        if len(payments) > 0:
+            self.payments_table.selectRow(0)
         
         # Trigger resize to ensure columns fill available space
         self._resize_payments_table()
@@ -2224,6 +2268,106 @@ class SuppliersView(BaseTabbedView):
         
         dialog.exec()
     
+    def _view_payment_allocations_dialog(self, parent_dialog: QDialog, supplier_id: int, payment_id: int):
+        """View and manage payment allocations dialog."""
+        if not self.payment_controller:
+            return
+        
+        dialog = QDialog(parent_dialog)
+        dialog.setWindowTitle("Payment Allocations")
+        dialog.setModal(True)
+        dialog.setMinimumSize(600, 400)
+        apply_theme(dialog)
+        
+        esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
+        esc_shortcut.activated.connect(dialog.reject)
+        
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        payment = self.payment_controller.get_payment(payment_id)
+        if not payment:
+            QMessageBox.warning(dialog, "Error", "Payment not found")
+            dialog.reject()
+            return
+        
+        info_label = QLabel(f"Payment: £{payment['amount']:.2f} on {payment['payment_date']}")
+        info_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        layout.addWidget(info_label)
+        
+        allocations = self.payment_controller.get_payment_allocations(payment_id)
+        
+        if not allocations:
+            no_alloc_label = QLabel("No allocations found.")
+            layout.addWidget(no_alloc_label)
+        else:
+            allocations_table = QTableWidget()
+            allocations_table.setColumnCount(4)
+            allocations_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Amount Allocated", "Unallocate"])
+            allocations_table.horizontalHeader().setStretchLastSection(False)
+            allocations_table.setColumnWidth(3, 100)
+            allocations_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            allocations_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            allocations_table.setAlternatingRowColors(True)
+            allocations_table.setRowCount(len(allocations))
+            
+            for row, allocation in enumerate(allocations):
+                # Get invoice details
+                invoice_id = allocation['invoice_id']
+                invoice = self.invoice_controller.get_invoice(invoice_id) if self.invoice_controller else None
+                
+                if invoice:
+                    allocations_table.setItem(row, 0, QTableWidgetItem(invoice.get('invoice_number', 'N/A')))
+                    allocations_table.setItem(row, 1, QTableWidgetItem(invoice.get('invoice_date', 'N/A')))
+                else:
+                    allocations_table.setItem(row, 0, QTableWidgetItem(f"Invoice #{invoice_id}"))
+                    allocations_table.setItem(row, 1, QTableWidgetItem("N/A"))
+                
+                allocations_table.setItem(row, 2, QTableWidgetItem(f"£{allocation['amount_allocated']:.2f}"))
+                
+                # Unallocate button
+                unalloc_btn = QPushButton("Unallocate")
+                unalloc_btn.setMaximumWidth(90)
+                unalloc_btn.clicked.connect(
+                    lambda checked, alloc_id=allocation['id']: self._unallocate_payment(dialog, supplier_id, alloc_id)
+                )
+                allocations_table.setCellWidget(row, 3, unalloc_btn)
+            
+            layout.addWidget(allocations_table)
+        
+        # Close button
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        close_btn = QPushButton("Close (Esc)")
+        close_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(close_btn)
+        layout.addLayout(button_layout)
+        
+        dialog.exec()
+    
+    def _unallocate_payment(self, parent_dialog: QDialog, supplier_id: int, allocation_id: int):
+        """Unallocate a payment from an invoice."""
+        reply = QMessageBox.question(
+            parent_dialog,
+            "Confirm Unallocate",
+            "Are you sure you want to unallocate this payment?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success, message = self.payment_controller.delete_allocation(allocation_id)
+            if success:
+                QMessageBox.information(parent_dialog, "Success", message)
+                # Refresh the dialog
+                parent_dialog.accept()
+                # Reopen supplier details to refresh
+                supplier_data = self.supplier_model.get_by_id(supplier_id, self._current_user_id)
+                if supplier_data:
+                    self._show_supplier_details(supplier_id, supplier_data['account_number'], supplier_data['name'])
+            else:
+                QMessageBox.warning(parent_dialog, "Error", message)
+    
     def _view_invoice_dialog(self, parent_dialog: QDialog, supplier_id: int, invoice_id: int):
         """Edit invoice dialog - allows editing invoice details and items."""
         if not self.invoice_controller:
@@ -2670,12 +2814,16 @@ class SuppliersView(BaseTabbedView):
                 # Show allocation dialog (it will handle closing parent_dialog on success)
                 # Pass a callback to close parent_dialog after successful allocation
                 def allocation_callback():
-                    parent_dialog.accept()  # Close parent to refresh
+                    if parent_dialog is not None:
+                        parent_dialog.accept()  # Close parent to refresh
                 self._allocate_payment_dialog(parent_dialog, supplier_id, payment_id, allocation_callback)
             else:
                 # No outstanding invoices, show success and close parent to refresh
-                QMessageBox.information(parent_dialog, "Success", "Payment created successfully")
-                parent_dialog.accept()
+                if parent_dialog is not None:
+                    QMessageBox.information(parent_dialog, "Success", "Payment created successfully")
+                    parent_dialog.accept()
+                else:
+                    QMessageBox.information(self, "Success", "Payment created successfully")
         
         save_btn = QPushButton("Save (Ctrl+Enter)")
         save_btn.setDefault(True)
@@ -2726,10 +2874,57 @@ class SuppliersView(BaseTabbedView):
             return
         
         unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
+        current_allocations = self.payment_controller.get_payment_allocations(payment_id)
         
         info_label = QLabel(f"Payment Amount: £{payment['amount']:.2f}\nUnallocated: £{unallocated:.2f}")
         info_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(info_label)
+        
+        # Current allocations section (if any exist)
+        if current_allocations:
+            allocations_label = QLabel("Current Allocations:")
+            allocations_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+            layout.addWidget(allocations_label)
+            
+            allocations_table = QTableWidget()
+            allocations_table.setColumnCount(4)
+            allocations_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Amount Allocated", "Unallocate"])
+            allocations_table.horizontalHeader().setStretchLastSection(False)
+            allocations_table.setColumnWidth(3, 100)
+            allocations_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            allocations_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            allocations_table.setAlternatingRowColors(True)
+            allocations_table.setRowCount(len(current_allocations))
+            
+            for row, allocation in enumerate(current_allocations):
+                # Get invoice details
+                invoice_id = allocation['invoice_id']
+                invoice = self.invoice_controller.get_invoice(invoice_id) if self.invoice_controller else None
+                
+                if invoice:
+                    allocations_table.setItem(row, 0, QTableWidgetItem(invoice.get('invoice_number', 'N/A')))
+                    allocations_table.setItem(row, 1, QTableWidgetItem(invoice.get('invoice_date', 'N/A')))
+                else:
+                    allocations_table.setItem(row, 0, QTableWidgetItem(f"Invoice #{invoice_id}"))
+                    allocations_table.setItem(row, 1, QTableWidgetItem("N/A"))
+                
+                allocations_table.setItem(row, 2, QTableWidgetItem(f"£{allocation['amount_allocated']:.2f}"))
+                
+                # Unallocate button
+                unalloc_btn = QPushButton("Unallocate")
+                unalloc_btn.setMaximumWidth(90)
+                unalloc_btn.clicked.connect(
+                    lambda checked, alloc_id=allocation['id']: self._handle_unallocate_from_allocate_dialog(
+                        dialog, supplier_id, payment_id, alloc_id, parent_dialog, on_success_callback
+                    )
+                )
+                allocations_table.setCellWidget(row, 3, unalloc_btn)
+            
+            layout.addWidget(allocations_table)
+            
+            separator = QLabel("─" * 50)
+            separator.setStyleSheet("color: #999;")
+            layout.addWidget(separator)
         
         # Outstanding invoices
         invoices = self.payment_controller.get_outstanding_invoices(supplier_id)
@@ -2781,8 +2976,48 @@ class SuppliersView(BaseTabbedView):
             dialog.accept()
             if on_success_callback:
                 on_success_callback()
-            else:
+            elif parent_dialog is not None:
                 parent_dialog.accept()
+        
+        def handle_delete():
+            """Handle delete payment button."""
+            allocations = self.payment_controller.get_payment_allocations(payment_id)
+            if allocations:
+                QMessageBox.warning(
+                    dialog,
+                    "Cannot Delete",
+                    f"Cannot delete payment: payment has {len(allocations)} allocation(s).\n"
+                    "Please unallocate the payment first."
+                )
+                return
+            
+            reply = QMessageBox.question(
+                dialog,
+                "Confirm Delete",
+                f"Are you sure you want to delete payment of £{payment['amount']:.2f} from {payment['payment_date']}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                success, message = self.payment_controller.delete_payment(payment_id)
+                if success:
+                    QMessageBox.information(dialog, "Success", message)
+                    dialog.accept()
+                    # Close parent dialog if it exists
+                    if parent_dialog is not None:
+                        parent_dialog.accept()
+                    # Reopen supplier details dialog to show updated payments, on payments tab
+                    supplier_data = self.supplier_model.get_by_id(supplier_id, self._current_user_id)
+                    if supplier_data:
+                        # Use QTimer to ensure dialog is closed before reopening
+                        from PySide6.QtCore import QTimer
+                        def show_supplier_with_payments_tab():
+                            self._show_supplier_details(supplier_id, supplier_data['account_number'], supplier_data['name'], initial_tab=2)
+                        QTimer.singleShot(100, show_supplier_with_payments_tab)
+                    elif on_success_callback:
+                        on_success_callback()
+                else:
+                    QMessageBox.warning(dialog, "Error", message)
         
         allocate_btn = QPushButton("Allocate (Ctrl+Enter)")
         allocate_btn.setDefault(True)
@@ -2791,9 +3026,36 @@ class SuppliersView(BaseTabbedView):
         ctrl_enter.activated.connect(handle_allocate)
         button_layout.addWidget(allocate_btn)
         
+        delete_btn = QPushButton("Delete Payment")
+        delete_btn.clicked.connect(handle_delete)
+        button_layout.addWidget(delete_btn)
+        
         cancel_btn = QPushButton("Cancel (Esc)")
         cancel_btn.clicked.connect(dialog.reject)
         button_layout.addWidget(cancel_btn)
         
         layout.addLayout(button_layout)
         dialog.exec()
+    
+    def _handle_unallocate_from_allocate_dialog(self, dialog: QDialog, supplier_id: int, payment_id: int, 
+                                                allocation_id: int, parent_dialog: Optional[QDialog], 
+                                                on_success_callback: Optional[Callable]):
+        """Handle unallocate from allocate payment dialog."""
+        reply = QMessageBox.question(
+            dialog,
+            "Confirm Unallocate",
+            "Are you sure you want to unallocate this payment?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            success, message = self.payment_controller.delete_allocation(allocation_id)
+            if success:
+                QMessageBox.information(dialog, "Success", message)
+                # Close and reopen the allocate dialog to refresh
+                dialog.accept()
+                # Reopen allocate dialog
+                self._allocate_payment_dialog(parent_dialog, supplier_id, payment_id, on_success_callback)
+            else:
+                QMessageBox.warning(dialog, "Error", message)
+    

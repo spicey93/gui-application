@@ -96,12 +96,39 @@ class PaymentAllocation:
                 if amount_allocated > outstanding:
                     return False, f"Allocation amount exceeds invoice outstanding balance (£{outstanding:.2f})", None
                 
+                # Check if allocation already exists for this payment and invoice
                 cursor.execute("""
-                    INSERT INTO payment_allocations (payment_id, invoice_id, amount_allocated)
-                    VALUES (?, ?, ?)
-                """, (payment_id, invoice_id, amount_allocated))
+                    SELECT id, amount_allocated FROM payment_allocations
+                    WHERE payment_id = ? AND invoice_id = ?
+                """, (payment_id, invoice_id))
+                existing = cursor.fetchone()
                 
-                allocation_id = cursor.lastrowid
+                if existing:
+                    # Update existing allocation by adding to it
+                    existing_id, existing_amount = existing
+                    new_amount = existing_amount + amount_allocated
+                    
+                    # Validate new total doesn't exceed outstanding balance
+                    outstanding = invoice_model.get_outstanding_balance(invoice_id, user_id)
+                    outstanding_with_existing = outstanding + existing_amount
+                    if new_amount > outstanding_with_existing:
+                        return False, f"Total allocation amount (£{new_amount:.2f}) exceeds invoice outstanding balance (£{outstanding_with_existing:.2f})", None
+                    
+                    # Update the allocation
+                    cursor.execute("""
+                        UPDATE payment_allocations
+                        SET amount_allocated = ?
+                        WHERE id = ?
+                    """, (new_amount, existing_id))
+                    allocation_id = existing_id
+                else:
+                    # Create new allocation
+                    cursor.execute("""
+                        INSERT INTO payment_allocations (payment_id, invoice_id, amount_allocated)
+                        VALUES (?, ?, ?)
+                    """, (payment_id, invoice_id, amount_allocated))
+                    allocation_id = cursor.lastrowid
+                
                 conn.commit()
             return True, f"Allocated £{amount_allocated:.2f} to invoice", allocation_id
         except sqlite3.IntegrityError:
@@ -159,7 +186,7 @@ class PaymentAllocation:
         except Exception:
             return []
     
-    def update(self, allocation_id: int, amount_allocated: float) -> Tuple[bool, str]:
+    def update(self, allocation_id: int, amount_allocated: float) -> Tuple[bool, str, Optional[int]]:
         """
         Update an allocation amount.
         
@@ -168,10 +195,10 @@ class PaymentAllocation:
             amount_allocated: New allocation amount
         
         Returns:
-            Tuple of (success: bool, message: str)
+            Tuple of (success: bool, message: str, invoice_id: Optional[int])
         """
         if amount_allocated <= 0:
-            return False, "Allocation amount must be greater than zero"
+            return False, "Allocation amount must be greater than zero", None
         
         try:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
@@ -183,7 +210,7 @@ class PaymentAllocation:
                 """, (allocation_id,))
                 result = cursor.fetchone()
                 if not result:
-                    return False, "Allocation not found"
+                    return False, "Allocation not found", None
                 
                 payment_id, invoice_id = result
                 
@@ -219,14 +246,38 @@ class PaymentAllocation:
                 """, (amount_allocated, allocation_id))
                 
                 if cursor.rowcount == 0:
-                    return False, "Allocation not found"
+                    return False, "Allocation not found", None
                 
                 conn.commit()
-            return True, "Allocation updated successfully"
+            return True, "Allocation updated successfully", invoice_id
         except Exception as e:
-            return False, f"Error updating allocation: {str(e)}"
+            return False, f"Error updating allocation: {str(e)}", None
     
-    def delete(self, allocation_id: int) -> Tuple[bool, str]:
+    def get_by_id(self, allocation_id: int) -> Optional[Dict[str, any]]:
+        """
+        Get an allocation by ID.
+        
+        Args:
+            allocation_id: Allocation ID
+        
+        Returns:
+            Allocation dictionary or None if not found
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, payment_id, invoice_id, amount_allocated, created_at
+                    FROM payment_allocations 
+                    WHERE id = ?
+                """, (allocation_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception:
+            return None
+    
+    def delete(self, allocation_id: int) -> Tuple[bool, str, Optional[int]]:
         """
         Remove an allocation.
         
@@ -234,20 +285,29 @@ class PaymentAllocation:
             allocation_id: Allocation ID
         
         Returns:
-            Tuple of (success: bool, message: str)
+            Tuple of (success: bool, message: str, invoice_id: Optional[int])
         """
         try:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
                 cursor = conn.cursor()
+                
+                # Get invoice_id before deletion
+                cursor.execute("SELECT invoice_id FROM payment_allocations WHERE id = ?", (allocation_id,))
+                result = cursor.fetchone()
+                if not result:
+                    return False, "Allocation not found", None
+                
+                invoice_id = result[0]
+                
                 cursor.execute("DELETE FROM payment_allocations WHERE id = ?", (allocation_id,))
                 
                 if cursor.rowcount == 0:
-                    return False, "Allocation not found"
+                    return False, "Allocation not found", None
                 
                 conn.commit()
-            return True, "Allocation deleted successfully"
+            return True, "Allocation deleted successfully", invoice_id
         except Exception as e:
-            return False, f"Error deleting allocation: {str(e)}"
+            return False, f"Error deleting allocation: {str(e)}", None
     
     def get_total_allocated_to_invoice(self, invoice_id: int) -> float:
         """

@@ -144,6 +144,8 @@ class PaymentController(QObject):
         )
         
         if success:
+            # Update invoice status if fully paid
+            self.invoice_model.update_status_if_paid(invoice_id, self.user_id)
             self.allocation_created.emit()
         
         return success, message, allocation_id
@@ -159,9 +161,12 @@ class PaymentController(QObject):
         Returns:
             Tuple of (success: bool, message: str)
         """
-        success, message = self.payment_allocation_model.update(allocation_id, amount)
+        success, message, invoice_id = self.payment_allocation_model.update(allocation_id, amount)
         
         if success:
+            # Update invoice status if fully paid
+            if invoice_id:
+                self.invoice_model.update_status_if_paid(invoice_id, self.user_id)
             self.allocation_updated.emit()
         
         return success, message
@@ -176,9 +181,12 @@ class PaymentController(QObject):
         Returns:
             Tuple of (success: bool, message: str)
         """
-        success, message = self.payment_allocation_model.delete(allocation_id)
+        success, message, invoice_id = self.payment_allocation_model.delete(allocation_id)
         
         if success:
+            # Update invoice status if it was fully paid and now isn't
+            if invoice_id:
+                self.invoice_model.update_status_if_paid(invoice_id, self.user_id)
             self.allocation_deleted.emit()
         
         return success, message
@@ -232,6 +240,7 @@ class PaymentController(QObject):
             invoice_id = invoice['id']
             invoice['outstanding_balance'] = self.invoice_model.get_outstanding_balance(invoice_id, self.user_id)
         
-        # Filter to only invoices with outstanding balance > 0
-        return [inv for inv in invoices if inv['outstanding_balance'] > 0]
+        # Filter to only invoices with outstanding balance > 0 (exclude fully allocated invoices)
+        # Use a small epsilon to account for floating point precision
+        return [inv for inv in invoices if inv['outstanding_balance'] > 0.01]
 

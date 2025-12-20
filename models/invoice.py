@@ -318,6 +318,55 @@ class Invoice:
         except Exception:
             return 0.0
     
+    def update_status_if_paid(self, invoice_id: int, user_id: int) -> Tuple[bool, str]:
+        """
+        Update invoice status to 'paid' if fully paid (outstanding balance <= 0).
+        
+        Args:
+            invoice_id: Invoice ID
+            user_id: ID of the user
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Check if invoice exists and belongs to user
+                cursor.execute("SELECT id, status FROM invoices WHERE id = ? AND user_id = ?", (invoice_id, user_id))
+                result = cursor.fetchone()
+                if not result:
+                    return False, "Invoice not found"
+                
+                current_status = result[1]
+                
+                # Get outstanding balance
+                outstanding = self.get_outstanding_balance(invoice_id, user_id)
+                
+                # If fully paid and not already marked as paid, update status
+                if outstanding <= 0.01 and current_status != 'paid':
+                    cursor.execute("""
+                        UPDATE invoices 
+                        SET status = 'paid', updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND user_id = ?
+                    """, (invoice_id, user_id))
+                    conn.commit()
+                    return True, "Invoice status updated to paid"
+                # If not fully paid and currently marked as paid, revert to finalized
+                elif outstanding > 0.01 and current_status == 'paid':
+                    cursor.execute("""
+                        UPDATE invoices 
+                        SET status = 'finalized', updated_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND user_id = ?
+                    """, (invoice_id, user_id))
+                    conn.commit()
+                    return True, "Invoice status updated to finalized"
+                
+                return True, "Status check completed"
+        except Exception as e:
+            return False, f"Error updating invoice status: {str(e)}"
+    
     def delete(self, invoice_id: int, user_id: int) -> Tuple[bool, str]:
         """
         Delete an invoice (only if no payments allocated).
