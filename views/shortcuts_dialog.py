@@ -44,9 +44,11 @@ class ShortcutsDialog(QDialog):
         <b>F2</b> - Navigate to Suppliers<br>
         <b>F3</b> - Navigate to Customers<br>
         <b>F4</b> - Navigate to Products<br>
-        <b>F5</b> - Navigate to Inventory<br>
-        <b>F6</b> - Navigate to Book Keeper<br>
-        <b>F7</b> - Navigate to Configuration<br>
+        <b>F5</b> - Navigate to Services<br>
+        <b>F6</b> - Navigate to Inventory<br>
+        <b>F7</b> - Navigate to Book Keeper<br>
+        <b>F8</b> - Navigate to Vehicles<br>
+        <b>F9</b> - Navigate to Configuration<br>
         <b>Ctrl+Q</b> - Exit application<br><br>
         
         <b>Standard Navigation:</b><br><br>

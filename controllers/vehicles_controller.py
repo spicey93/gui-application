@@ -19,6 +19,7 @@ class VehiclesController(QObject):
     products_requested = Signal()
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
+    services_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -45,6 +46,7 @@ class VehiclesController(QObject):
         self.vehicles_view.products_requested.connect(self.products_requested.emit)
         self.vehicles_view.inventory_requested.connect(self.inventory_requested.emit)
         self.vehicles_view.bookkeeper_requested.connect(self.bookkeeper_requested.emit)
+        self.vehicles_view.services_requested.connect(self.services_requested.emit)
         self.vehicles_view.configuration_requested.connect(
             self.configuration_requested.emit
         )

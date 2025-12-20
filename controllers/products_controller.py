@@ -20,6 +20,7 @@ class ProductsController(QObject):
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
     vehicles_requested = Signal()
+    services_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -39,6 +40,7 @@ class ProductsController(QObject):
         self.products_view.inventory_requested.connect(self.handle_inventory)
         self.products_view.bookkeeper_requested.connect(self.handle_bookkeeper)
         self.products_view.vehicles_requested.connect(self.handle_vehicles)
+        self.products_view.services_requested.connect(self.handle_services)
         self.products_view.configuration_requested.connect(self.handle_configuration)
         self.products_view.logout_requested.connect(self.handle_logout)
         self.products_view.create_requested.connect(self.handle_create)
@@ -293,6 +295,10 @@ class ProductsController(QObject):
     def handle_vehicles(self):
         """Handle vehicles navigation."""
         self.vehicles_requested.emit()
+
+    def handle_services(self):
+        """Handle services navigation."""
+        self.services_requested.emit()
 
     def handle_configuration(self):
         """Handle configuration navigation."""

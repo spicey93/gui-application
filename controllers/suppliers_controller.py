@@ -20,6 +20,7 @@ class SuppliersController(QObject):
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
     vehicles_requested = Signal()
+    services_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     balance_changed = Signal()  # Emitted when invoices/payments change
@@ -46,6 +47,7 @@ class SuppliersController(QObject):
         self.suppliers_view.inventory_requested.connect(self.handle_inventory)
         self.suppliers_view.bookkeeper_requested.connect(self.handle_bookkeeper)
         self.suppliers_view.vehicles_requested.connect(self.handle_vehicles)
+        self.suppliers_view.services_requested.connect(self.handle_services)
         self.suppliers_view.configuration_requested.connect(self.handle_configuration)
         self.suppliers_view.logout_requested.connect(self.handle_logout)
         self.suppliers_view.create_requested.connect(self.handle_create)
@@ -172,6 +174,10 @@ class SuppliersController(QObject):
     def handle_vehicles(self):
         """Handle vehicles navigation."""
         self.vehicles_requested.emit()
+
+    def handle_services(self):
+        """Handle services navigation."""
+        self.services_requested.emit()
 
     def handle_configuration(self):
         """Handle configuration navigation."""
