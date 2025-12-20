@@ -112,18 +112,32 @@ class TyreCatalogueView(QDialog):
         brand_layout.addWidget(self.brand_combo)
         filters_content_layout.addLayout(brand_layout)
         
-        # OE Fitment (dropdown)
-        oe_layout = QHBoxLayout()
-        oe_label = QLabel("OE Fitment:")
-        oe_label.setMinimumWidth(120)
-        oe_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #000;")
-        oe_layout.addWidget(oe_label)
-        self.oe_combo = QComboBox()
-        self.oe_combo.setEditable(False)
-        self.oe_combo.setStyleSheet("background-color: white; color: black;")
-        self.oe_combo.addItem("")  # Empty option
-        oe_layout.addWidget(self.oe_combo)
-        filters_content_layout.addLayout(oe_layout)
+        # Model (dropdown - updates based on brand)
+        model_layout = QHBoxLayout()
+        model_label = QLabel("Model:")
+        model_label.setMinimumWidth(120)
+        model_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #000;")
+        model_layout.addWidget(model_label)
+        self.model_combo = QComboBox()
+        self.model_combo.setEditable(False)
+        self.model_combo.setStyleSheet("background-color: white; color: black;")
+        self.model_combo.addItem("")  # Empty option
+        model_layout.addWidget(self.model_combo)
+        filters_content_layout.addLayout(model_layout)
+        
+        # Function to update model dropdown based on brand selection
+        def update_model_dropdown():
+            """Update model dropdown based on selected brand."""
+            brand = self.brand_combo.currentText().strip()
+            self.model_combo.clear()
+            self.model_combo.addItem("")
+            if brand:
+                models = self.tyre_model.get_unique_models_by_brand(brand)
+                for model in models:
+                    self.model_combo.addItem(model)
+        
+        # Connect brand change to model update
+        self.brand_combo.currentTextChanged.connect(update_model_dropdown)
         
         # Run Flat (checkbox)
         runflat_layout = QHBoxLayout()
@@ -266,6 +280,19 @@ class TyreCatalogueView(QDialog):
         wet_grip_layout.addWidget(self.wet_grip_combo)
         filters_content_layout.addLayout(wet_grip_layout)
         
+        # OE Fitment (dropdown) - moved here after wet grip
+        oe_layout = QHBoxLayout()
+        oe_label = QLabel("OE Fitment:")
+        oe_label.setMinimumWidth(120)
+        oe_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #000;")
+        oe_layout.addWidget(oe_label)
+        self.oe_combo = QComboBox()
+        self.oe_combo.setEditable(False)
+        self.oe_combo.setStyleSheet("background-color: white; color: black;")
+        self.oe_combo.addItem("")  # Empty option
+        oe_layout.addWidget(self.oe_combo)
+        filters_content_layout.addLayout(oe_layout)
+        
         filters_content_layout.addStretch()
         
         filters_scroll.setWidget(filters_content)
@@ -395,6 +422,8 @@ class TyreCatalogueView(QDialog):
         """Clear all filter fields."""
         self.pattern_entry.clear()
         self.brand_combo.setCurrentIndex(0)
+        self.model_combo.clear()
+        self.model_combo.addItem("")
         self.oe_combo.setCurrentIndex(0)
         self.runflat_checkbox.setChecked(False)
         self.width_entry.clear()
@@ -437,6 +466,7 @@ class TyreCatalogueView(QDialog):
         # Get filter values
         pattern = self.pattern_entry.text().strip() or None
         brand = self.brand_combo.currentText().strip() or None
+        model = self.model_combo.currentText().strip() or None
         oe_fitment = self.oe_combo.currentText().strip() or None
         run_flat = self.runflat_checkbox.isChecked() or None
         width = self.width_entry.text().strip() or None
@@ -465,6 +495,7 @@ class TyreCatalogueView(QDialog):
         results = self.tyre_model.search(
             pattern=pattern,
             brand=brand,
+            model=model,
             oe_fitment=oe_fitment,
             run_flat=run_flat,
             width=width,

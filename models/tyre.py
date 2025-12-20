@@ -169,6 +169,7 @@ class Tyre:
         self,
         pattern: Optional[str] = None,
         brand: Optional[str] = None,
+        model: Optional[str] = None,
         oe_fitment: Optional[str] = None,
         run_flat: Optional[bool] = None,
         width: Optional[str] = None,
@@ -224,6 +225,10 @@ class Tyre:
                 if brand:
                     conditions.append("brand = ?")
                     params.append(brand)
+                
+                if model:
+                    conditions.append("model = ?")
+                    params.append(model)
                 
                 if oe_fitment:
                     conditions.append("oe_fitment = ?")

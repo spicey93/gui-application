@@ -187,26 +187,8 @@ def seed_user_data(models: dict, username: str, password: str, user_id: int):
     for name, phone, house, street, city, county, postcode in customers_data:
         models['customer'].create(name, phone, house, street, city, county, postcode, user_id)
     
-    # Products
-    print("    Creating products...")
-    products_data = [
-        ("STK001", "High-quality laptop computer", "Electronics"),
-        ("STK002", "Cotton t-shirt, various sizes", "Clothing"),
-        ("STK003", "Organic coffee beans, 1kg", "Food & Beverages"),
-        ("STK004", "Programming guide book", "Books"),
-        ("STK005", "Hammer set, 3 pieces", "Tools"),
-        ("STK006", "Office desk chair", "Furniture"),
-        ("STK007", "Wireless mouse", "Electronics"),
-        ("STK008", "Jeans, blue denim", "Clothing")
-    ]
+    # Products - not seeded (removed)
     created_products = []
-    for stock_number, description, type_name in products_data:
-        success, message = models['product'].create(stock_number, description, type_name, user_id)
-        if success:
-            products = models['product'].get_all(user_id)
-            product = next((p for p in products if p['stock_number'] == stock_number), None)
-            if product:
-                created_products.append(product)
     
     # Default Nominal Accounts
     print("    Creating default nominal accounts...")

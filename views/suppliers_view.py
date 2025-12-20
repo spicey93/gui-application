@@ -1436,47 +1436,61 @@ class SuppliersView(BaseTabbedView):
                     return
                 super().keyPressEvent(event)
         
-        # Search mode toggle
-        mode_layout = QHBoxLayout()
-        mode_label = QLabel("Search Mode:")
-        mode_label.setMinimumWidth(80)
-        mode_layout.addWidget(mode_label)
-        search_mode_combo = QComboBox()
-        search_mode_combo.addItems(["Products Only", "Products + Catalogue"])
-        search_mode_combo.setCurrentText("Products Only")
-        mode_layout.addWidget(search_mode_combo)
-        mode_layout.addStretch()
-        products_layout.addLayout(mode_layout)
+        # Create two-column grid layout for filters
+        from PySide6.QtWidgets import QGridLayout
+        filter_grid = QGridLayout()
+        filter_grid.setColumnStretch(0, 0)  # Label column - fixed width
+        filter_grid.setColumnStretch(1, 1)   # Input column - stretches
+        filter_grid.setSpacing(10)
+        filter_grid.setColumnMinimumWidth(0, 100)  # Minimum width for label column
         
-        # Brand and Model filters
-        filter_layout = QHBoxLayout()
+        row = 0
+        
+        # Search field
+        search_label = QLabel("Search:")
+        search_label.setStyleSheet("font-size: 11px;")
+        filter_grid.addWidget(search_label, row, 0)
+        search_entry = SearchLineEdit()
+        search_entry.setPlaceholderText("Search by stock number or description...")
+        search_entry.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        filter_grid.addWidget(search_entry, row, 1)
+        row += 1
+        
+        # Brand filter
         brand_label = QLabel("Brand:")
-        brand_label.setMinimumWidth(80)
-        filter_layout.addWidget(brand_label)
+        brand_label.setStyleSheet("font-size: 11px;")
+        filter_grid.addWidget(brand_label, row, 0)
         brand_combo = QComboBox()
         brand_combo.addItem("")  # Empty option
-        brand_combo.setMinimumWidth(150)
-        filter_layout.addWidget(brand_combo)
+        filter_grid.addWidget(brand_combo, row, 1)
+        row += 1
         
+        # Model filter
         model_label = QLabel("Model:")
-        model_label.setMinimumWidth(80)
-        filter_layout.addWidget(model_label)
+        model_label.setStyleSheet("font-size: 11px;")
+        filter_grid.addWidget(model_label, row, 0)
         model_combo = QComboBox()
         model_combo.addItem("")  # Empty option
-        model_combo.setMinimumWidth(150)
-        filter_layout.addWidget(model_combo)
-        filter_layout.addStretch()
-        products_layout.addLayout(filter_layout)
+        filter_grid.addWidget(model_combo, row, 1)
+        row += 1
         
-        search_layout = QHBoxLayout()
-        search_label = QLabel("Search:")
-        search_label.setMinimumWidth(80)
-        search_layout.addWidget(search_label)
-        search_entry = SearchLineEdit()
-        search_entry.setPlaceholderText("Search by stock number or description... (Press Enter to search)")
-        search_entry.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        search_layout.addWidget(search_entry, stretch=1)
-        products_layout.addLayout(search_layout)
+        products_layout.addLayout(filter_grid)
+        
+        # Search and Clear buttons (will be connected after filter_products is defined)
+        button_row_layout = QHBoxLayout()
+        button_row_layout.setSpacing(10)
+        
+        search_button = QPushButton("Search")
+        search_button.setMinimumHeight(30)
+        search_button.setDefault(True)
+        button_row_layout.addWidget(search_button)
+        
+        clear_button = QPushButton("Clear")
+        clear_button.setMinimumHeight(30)
+        button_row_layout.addWidget(clear_button)
+        button_row_layout.addStretch()
+        
+        products_layout.addLayout(button_row_layout)
         
         # Products table with Enter key support
         class ProductSearchTableWidget(QTableWidget):
@@ -1787,46 +1801,45 @@ class SuppliersView(BaseTabbedView):
             """Filter products and catalogue tyres based on search text and filters."""
             nonlocal filtered_products_list
             search_text = search_entry.text().lower().strip()
-            search_mode = search_mode_combo.currentText()
             selected_brand = brand_combo.currentText()
             selected_model = model_combo.currentText()
             
             results = []
             
+            # Always search both products and catalogue
             # Search products
-            if search_mode in ["Products Only", "Products + Catalogue"]:
-                product_list = all_products
-                
-                # Apply brand filter for tyre products
-                if selected_brand:
-                    product_list = [
-                        p for p in product_list
-                        if not p.get('is_tyre') or p.get('tyre_brand') == selected_brand
-                    ]
-                
-                # Apply model filter for tyre products
-                if selected_model:
-                    product_list = [
-                        p for p in product_list
-                        if not p.get('is_tyre') or p.get('tyre_model') == selected_model
-                    ]
-                
-                # Apply search text filter
-                if search_text:
-                    product_list = [
-                        p for p in product_list
-                        if search_text in p.get('stock_number', '').lower() or
-                           search_text in p.get('description', '').lower()
-                    ]
-                
-                # Add products to results with source indicator
-                for product in product_list:
-                    product_copy = product.copy()
-                    product_copy['_source'] = 'product'
-                    results.append(product_copy)
+            product_list = all_products
             
-            # Search catalogue tyres
-            if search_mode == "Products + Catalogue" and tyre_model:
+            # Apply brand filter for tyre products
+            if selected_brand:
+                product_list = [
+                    p for p in product_list
+                    if not p.get('is_tyre') or p.get('tyre_brand') == selected_brand
+                ]
+            
+            # Apply model filter for tyre products
+            if selected_model:
+                product_list = [
+                    p for p in product_list
+                    if not p.get('is_tyre') or p.get('tyre_model') == selected_model
+                ]
+            
+            # Apply search text filter
+            if search_text:
+                product_list = [
+                    p for p in product_list
+                    if search_text in p.get('stock_number', '').lower() or
+                       search_text in p.get('description', '').lower()
+                ]
+            
+            # Add products to results with source indicator
+            for product in product_list:
+                product_copy = product.copy()
+                product_copy['_source'] = 'product'
+                results.append(product_copy)
+            
+            # Search catalogue tyres (always enabled)
+            if tyre_model:
                 # Build catalogue search filters
                 catalogue_filters = {}
                 if selected_brand:
@@ -1948,9 +1961,17 @@ class SuppliersView(BaseTabbedView):
             filter_products()
         
         search_entry.returnPressed.connect(handle_search_enter)
-        search_mode_combo.currentTextChanged.connect(filter_products)
-        brand_combo.currentTextChanged.connect(filter_products)
-        model_combo.currentTextChanged.connect(filter_products)
+        # Connect buttons to filter_products (defined above)
+        search_button.clicked.connect(filter_products)
+        clear_button.clicked.connect(lambda: (
+            search_entry.clear(),
+            brand_combo.setCurrentIndex(0),
+            model_combo.setCurrentIndex(0),
+            filter_products()
+        ))
+        # Note: Removed auto-search on filter change - user must click Search button
+        # brand_combo.currentTextChanged.connect(filter_products)
+        # model_combo.currentTextChanged.connect(filter_products)
         
         # Don't load all products initially - wait for search
         filtered_products_list = []
