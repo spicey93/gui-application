@@ -107,7 +107,8 @@ class LoginView(QWidget):
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
         # Tab order is automatically handled by Qt based on widget creation order
-        # Enter key on password field triggers login
+        # Enter key on both username and password fields triggers login
+        self.username_entry.returnPressed.connect(self._handle_login)
         self.password_entry.returnPressed.connect(self._handle_login)
     
     def _handle_login(self):

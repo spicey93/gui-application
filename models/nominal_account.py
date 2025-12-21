@@ -432,3 +432,4 @@ class NominalAccount:
             return account.get('current_balance', 0.0)
         return 0.0
 
+

@@ -236,3 +236,4 @@ class InvoiceController(QObject):
         """
         return self.invoice_model.calculate_totals(invoice_id, self.user_id)
 
+

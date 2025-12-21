@@ -294,3 +294,4 @@ class JournalEntry:
         
         return entries
 
+

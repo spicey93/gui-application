@@ -94,3 +94,4 @@ def apply_theme(widget) -> None:
     if stylesheet:
         widget.setStyleSheet(stylesheet)
 
+
