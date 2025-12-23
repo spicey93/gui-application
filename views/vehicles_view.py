@@ -2,12 +2,33 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
-    QMessageBox, QGroupBox, QTextEdit, QScrollArea, QFormLayout
+    QMessageBox, QGroupBox, QTextEdit, QScrollArea, QFormLayout,
+    QTabWidget
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QShortcut, QKeySequence
+from PySide6.QtGui import QShortcut, QKeySequence, QKeyEvent
 from views.base_view import BaseTabbedView
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
+
+
+class VehiclesTableWidget(QTableWidget):
+    """Custom table widget with Enter key support."""
+    
+    def __init__(self, enter_callback: Callable[[], None]):
+        """Initialize the table widget."""
+        super().__init__()
+        self.enter_callback = enter_callback
+    
+    def keyPressEvent(self, event: QKeyEvent):
+        """Handle key press events."""
+        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            # Check if we have a selected row
+            current_row = self.currentRow()
+            if current_row >= 0:
+                self.enter_callback()
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
 
 class VehiclesView(BaseTabbedView):
@@ -15,6 +36,7 @@ class VehiclesView(BaseTabbedView):
     
     # Signals
     vehicle_lookup_requested = Signal(str)  # vrm
+    vehicle_api_lookup_requested = Signal(str)  # vrm
     vehicle_selected = Signal(int)  # vehicle_id
     vehicle_delete_requested = Signal(int)  # vehicle_id
     
@@ -35,6 +57,14 @@ class VehiclesView(BaseTabbedView):
         # Create details tab
         details_tab = self._create_details_tab()
         self.add_tab(details_tab, "Details (Ctrl+2)", "Ctrl+2")
+        
+        # Create customer tab
+        customer_tab = self._create_customer_tab()
+        self.add_tab(customer_tab, "Customer (Ctrl+3)", "Ctrl+3")
+        
+        # Create sales history tab
+        sales_history_tab = self._create_sales_history_tab()
+        self.add_tab(sales_history_tab, "Sales History (Ctrl+4)", "Ctrl+4")
     
     def _create_list_tab(self) -> QWidget:
         """Create the vehicles list tab."""
@@ -43,26 +73,30 @@ class VehiclesView(BaseTabbedView):
         layout.setSpacing(15)
         layout.setContentsMargins(10, 10, 10, 10)
         
-        # VRM Lookup section
-        lookup_group = QGroupBox("Vehicle Lookup")
+        # VRM Search section
+        lookup_group = QGroupBox("Vehicle Search")
         lookup_layout = QHBoxLayout(lookup_group)
         
         self.vrm_input = QLineEdit()
-        self.vrm_input.setPlaceholderText("Enter VRM (e.g., AB12 CDE)")
+        self.vrm_input.setPlaceholderText("Enter VRM (e.g., LD, AB12)")
         self.vrm_input.setMaximumWidth(200)
-        self.vrm_input.returnPressed.connect(self._on_lookup_clicked)
+        self.vrm_input.returnPressed.connect(self._on_search_clicked)
         lookup_layout.addWidget(QLabel("VRM:"))
         lookup_layout.addWidget(self.vrm_input)
         
-        self.lookup_btn = QPushButton("Lookup (Enter)")
-        self.lookup_btn.clicked.connect(self._on_lookup_clicked)
-        lookup_layout.addWidget(self.lookup_btn)
+        self.search_btn = QPushButton("Search (Enter)")
+        self.search_btn.clicked.connect(self._on_search_clicked)
+        lookup_layout.addWidget(self.search_btn)
+        
+        self.api_lookup_btn = QPushButton("API Lookup")
+        self.api_lookup_btn.clicked.connect(self._on_api_lookup_clicked)
+        lookup_layout.addWidget(self.api_lookup_btn)
         lookup_layout.addStretch()
         
         layout.addWidget(lookup_group)
         
         # Vehicles table
-        self.vehicles_table = QTableWidget()
+        self.vehicles_table = VehiclesTableWidget(self._on_view_details)
         self.vehicles_table.setColumnCount(5)
         self.vehicles_table.setHorizontalHeaderLabels([
             "VRM", "Make", "Model", "Year", "Last Updated"
@@ -77,8 +111,8 @@ class VehiclesView(BaseTabbedView):
             QTableWidget.SelectionMode.SingleSelection
         )
         self.vehicles_table.setAlternatingRowColors(True)
+        self.vehicles_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.vehicles_table.doubleClicked.connect(self._on_vehicle_double_clicked)
-        self.vehicles_table.activated.connect(self._on_vehicle_double_clicked)
         
         layout.addWidget(self.vehicles_table)
         
@@ -116,8 +150,8 @@ class VehiclesView(BaseTabbedView):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         scroll_content = QWidget()
-        self.details_layout = QVBoxLayout(scroll_content)
-        self.details_layout.setSpacing(15)
+        details_layout = QVBoxLayout(scroll_content)
+        details_layout.setSpacing(15)
         
         # Basic info group
         self.basic_group = QGroupBox("Vehicle Information")
@@ -130,7 +164,7 @@ class VehiclesView(BaseTabbedView):
         self.basic_layout.addRow("Make:", self.make_label)
         self.basic_layout.addRow("Model:", self.model_label)
         self.basic_layout.addRow("Build Year:", self.year_label)
-        self.details_layout.addWidget(self.basic_group)
+        details_layout.addWidget(self.basic_group)
         
         # Tyre info group
         self.tyre_group = QGroupBox("Tyre Information")
@@ -146,7 +180,7 @@ class VehiclesView(BaseTabbedView):
         )
         self.tyre_table.setAlternatingRowColors(True)
         self.tyre_layout.addWidget(self.tyre_table)
-        self.details_layout.addWidget(self.tyre_group)
+        details_layout.addWidget(self.tyre_group)
         
         # Hub/Fixing info
         self.hub_group = QGroupBox("Hub & Fixing Information")
@@ -159,9 +193,9 @@ class VehiclesView(BaseTabbedView):
         self.hub_layout.addRow("PCD:", self.pcd_label)
         self.hub_layout.addRow("Thread Type:", self.thread_type_label)
         self.hub_layout.addRow("Torque (Nm):", self.torque_label)
-        self.details_layout.addWidget(self.hub_group)
+        details_layout.addWidget(self.hub_group)
         
-        self.details_layout.addStretch()
+        details_layout.addStretch()
         scroll.setWidget(scroll_content)
         layout.addWidget(scroll)
         
@@ -175,18 +209,99 @@ class VehiclesView(BaseTabbedView):
         
         return tab
     
+    def _create_customer_tab(self) -> QWidget:
+        """Create the customer tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(15)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Vehicle info header
+        self.customer_header = QLabel("Select a vehicle to view customer information")
+        self.customer_header.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(self.customer_header)
+        
+        # Customer info group
+        self.customer_group = QGroupBox("Customer Information")
+        self.customer_layout = QFormLayout(self.customer_group)
+        self.customer_name_label = QLabel("-")
+        self.customer_phone_label = QLabel("-")
+        self.customer_address_label = QLabel("-")
+        self.customer_layout.addRow("Name:", self.customer_name_label)
+        self.customer_layout.addRow("Phone:", self.customer_phone_label)
+        self.customer_layout.addRow("Address:", self.customer_address_label)
+        layout.addWidget(self.customer_group)
+        
+        layout.addStretch()
+        
+        # Back button
+        back_layout = QHBoxLayout()
+        back_btn = QPushButton("Back to List (Ctrl+1)")
+        back_btn.clicked.connect(lambda: self.tab_widget.setCurrentIndex(0))
+        back_layout.addWidget(back_btn)
+        back_layout.addStretch()
+        layout.addLayout(back_layout)
+        
+        return tab
+    
+    def _create_sales_history_tab(self) -> QWidget:
+        """Create the sales history tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(15)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Vehicle info header
+        self.sales_history_header = QLabel("Select a vehicle to view sales history")
+        self.sales_history_header.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(self.sales_history_header)
+        
+        # Sales history table
+        self.sales_history_table = QTableWidget()
+        self.sales_history_table.setColumnCount(7)
+        self.sales_history_table.setHorizontalHeaderLabels([
+            "Document Number", "Date", "Type", "Status", "Subtotal", "VAT", "Total"
+        ])
+        self.sales_history_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self.sales_history_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.sales_history_table.setAlternatingRowColors(True)
+        layout.addWidget(self.sales_history_table)
+        
+        # Back button
+        back_layout = QHBoxLayout()
+        back_btn = QPushButton("Back to List (Ctrl+1)")
+        back_btn.clicked.connect(lambda: self.tab_widget.setCurrentIndex(0))
+        back_layout.addWidget(back_btn)
+        back_layout.addStretch()
+        layout.addLayout(back_layout)
+        
+        return tab
+    
     def _setup_keyboard_navigation(self) -> None:
         """Set up keyboard navigation."""
         delete_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Delete), self)
         delete_shortcut.activated.connect(self._on_delete_clicked)
     
-    def _on_lookup_clicked(self) -> None:
-        """Handle lookup button click."""
+    def _on_search_clicked(self) -> None:
+        """Handle search button click."""
+        vrm = self.vrm_input.text().strip()
+        if not vrm:
+            QMessageBox.warning(self, "Warning", "Please enter a VRM to search")
+            return
+        
+        self.vehicle_lookup_requested.emit(vrm.upper())
+    
+    def _on_api_lookup_clicked(self) -> None:
+        """Handle API lookup button click."""
         vrm = self.vrm_input.text().strip().upper()
         if vrm:
-            self.vehicle_lookup_requested.emit(vrm)
+            self.vehicle_api_lookup_requested.emit(vrm)
         else:
-            QMessageBox.warning(self, "Warning", "Please enter a VRM")
+            QMessageBox.warning(self, "Warning", "Please enter a VRM for API lookup")
     
     def _on_vehicle_double_clicked(self) -> None:
         """Handle vehicle double click."""
@@ -240,16 +355,22 @@ class VehiclesView(BaseTabbedView):
             updated = vehicle.get('updated_at', '')[:10] if vehicle.get('updated_at') else ''
             self.vehicles_table.setItem(row, 4, QTableWidgetItem(updated))
         
-        # Select first row if there are results
+        # Select first row if there are results and set focus
         if vehicles:
             self.vehicles_table.selectRow(0)
+            self.vehicles_table.setFocus()
     
     def focus_vrm_input(self) -> None:
         """Focus the VRM input field."""
         self.vrm_input.setFocus()
         self.vrm_input.selectAll()
     
-    def show_vehicle_details(self, vehicle: Dict[str, Any]) -> None:
+    def show_vehicle_details(
+        self, 
+        vehicle: Dict[str, Any], 
+        customer: Optional[Dict[str, Any]] = None,
+        sales_history: Optional[List[Dict[str, Any]]] = None
+    ) -> None:
         """Display vehicle details in the details tab."""
         # Update header
         vrm = vehicle.get('vrm', 'Unknown')
@@ -325,6 +446,60 @@ class VehiclesView(BaseTabbedView):
             self.thread_type_label.setText("-")
             self.torque_label.setText("-")
         
+        # Update customer tab header and info
+        vrm = vehicle.get('vrm', 'Unknown')
+        make = vehicle.get('make', '')
+        model = vehicle.get('model', '')
+        self.customer_header.setText(f"{vrm} - {make} {model} - Customer")
+        
+        if customer:
+            self.customer_name_label.setText(customer.get('name', '-'))
+            self.customer_phone_label.setText(customer.get('phone', '-') or "-")
+            # Format address
+            address_parts = []
+            if customer.get('house_name_no'):
+                address_parts.append(customer.get('house_name_no'))
+            if customer.get('street_address'):
+                address_parts.append(customer.get('street_address'))
+            if customer.get('city'):
+                address_parts.append(customer.get('city'))
+            if customer.get('county'):
+                address_parts.append(customer.get('county'))
+            if customer.get('postcode'):
+                address_parts.append(customer.get('postcode'))
+            self.customer_address_label.setText(", ".join(address_parts) if address_parts else "-")
+        else:
+            self.customer_name_label.setText("-")
+            self.customer_phone_label.setText("-")
+            self.customer_address_label.setText("No customer associated with this vehicle")
+        
+        # Update sales history tab header and table
+        self.sales_history_header.setText(f"{vrm} - {make} {model} - Sales History")
+        
+        if sales_history:
+            self.sales_history_table.setRowCount(len(sales_history))
+            for row, sale in enumerate(sales_history):
+                self.sales_history_table.setItem(
+                    row, 0, QTableWidgetItem(sale.get('document_number', '-'))
+                )
+                date_str = sale.get('document_date', '')[:10] if sale.get('document_date') else '-'
+                self.sales_history_table.setItem(row, 1, QTableWidgetItem(date_str))
+                doc_type = sale.get('document_type', '-').capitalize()
+                self.sales_history_table.setItem(row, 2, QTableWidgetItem(doc_type))
+                status = sale.get('status', '-').capitalize()
+                self.sales_history_table.setItem(row, 3, QTableWidgetItem(status))
+                self.sales_history_table.setItem(
+                    row, 4, QTableWidgetItem(f"£{sale.get('subtotal', 0.0):.2f}")
+                )
+                self.sales_history_table.setItem(
+                    row, 5, QTableWidgetItem(f"£{sale.get('vat_amount', 0.0):.2f}")
+                )
+                self.sales_history_table.setItem(
+                    row, 6, QTableWidgetItem(f"£{sale.get('total', 0.0):.2f}")
+                )
+        else:
+            self.sales_history_table.setRowCount(0)
+        
         # Switch to details tab
         self.tab_widget.setCurrentIndex(1)
     
@@ -339,14 +514,27 @@ class VehiclesView(BaseTabbedView):
         else:
             QMessageBox.information(self, title, message)
     
-    def confirm_api_lookup(self, vrm: str) -> bool:
-        """Ask user to confirm API lookup for a VRM not in database."""
+    def confirm_api_lookup(self, vrm: str, message: Optional[str] = None) -> bool:
+        """
+        Ask user to confirm API lookup.
+        
+        Args:
+            vrm: The VRM being looked up
+            message: Optional custom message to display
+        
+        Returns:
+            True if user confirms, False otherwise
+        """
+        if message is None:
+            message = (
+                f"Perform API lookup for vehicle '{vrm}'?\n\n"
+                "(This will use API credits)"
+            )
+        
         reply = QMessageBox.question(
             self,
-            "Vehicle Not Found",
-            f"Vehicle '{vrm}' is not in your database.\n\n"
-            "Would you like to perform an API lookup?\n"
-            "(This will use API credits)",
+            "Confirm API Lookup",
+            message,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No
         )

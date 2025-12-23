@@ -16,6 +16,7 @@ class NavigationPanel(QFrame):
     bookkeeper_requested = Signal()
     vehicles_requested = Signal()
     services_requested = Signal()
+    sales_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -105,8 +106,15 @@ class NavigationPanel(QFrame):
         self.vehicles_button.clicked.connect(self._handle_vehicles)
         nav_layout.addWidget(self.vehicles_button)
         
+        # Sales menu item
+        self.sales_button = QPushButton("Sales (F9)")
+        self.sales_button.setObjectName("navButton")
+        self.sales_button.setMinimumHeight(30)
+        self.sales_button.clicked.connect(self._handle_sales)
+        nav_layout.addWidget(self.sales_button)
+        
         # Configuration menu item
-        self.config_button = QPushButton("Configuration (F9)")
+        self.config_button = QPushButton("Configuration (F10)")
         self.config_button.setObjectName("navButton")
         self.config_button.setMinimumHeight(30)
         self.config_button.clicked.connect(self._handle_configuration)
@@ -136,7 +144,7 @@ class NavigationPanel(QFrame):
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
-        # Tab order: Dashboard -> Suppliers -> Customers -> Products -> Services -> Inventory -> Book Keeper -> Vehicles -> Configuration -> Logout
+        # Tab order: Dashboard -> Suppliers -> Customers -> Products -> Services -> Inventory -> Book Keeper -> Vehicles -> Sales -> Configuration -> Logout
         self.setTabOrder(self.dashboard_button, self.suppliers_button)
         self.setTabOrder(self.suppliers_button, self.customers_button)
         self.setTabOrder(self.customers_button, self.products_button)
@@ -144,7 +152,8 @@ class NavigationPanel(QFrame):
         self.setTabOrder(self.services_button, self.inventory_button)
         self.setTabOrder(self.inventory_button, self.bookkeeper_button)
         self.setTabOrder(self.bookkeeper_button, self.vehicles_button)
-        self.setTabOrder(self.vehicles_button, self.config_button)
+        self.setTabOrder(self.vehicles_button, self.sales_button)
+        self.setTabOrder(self.sales_button, self.config_button)
         self.setTabOrder(self.config_button, self.logout_button)
         
         # Arrow keys for navigation panel
@@ -156,6 +165,7 @@ class NavigationPanel(QFrame):
         self.bookkeeper_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.vehicles_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.services_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.sales_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.config_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.logout_button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
@@ -202,6 +212,11 @@ class NavigationPanel(QFrame):
         if self.current_view != "services":
             self.services_requested.emit()
     
+    def _handle_sales(self):
+        """Handle sales button click."""
+        if self.current_view != "sales":
+            self.sales_requested.emit()
+    
     def _handle_configuration(self):
         """Handle configuration button click."""
         if self.current_view != "configuration":
@@ -233,6 +248,7 @@ class NavigationPanel(QFrame):
             "bookkeeper": self.bookkeeper_button,
             "vehicles": self.vehicles_button,
             "services": self.services_button,
+            "sales": self.sales_button,
             "configuration": self.config_button
         }
         

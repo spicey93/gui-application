@@ -1,8 +1,10 @@
 """Comprehensive database reset script - removes everything and creates two users with full data."""
 import os
 import sys
+import sqlite3
 from pathlib import Path
 from datetime import date, timedelta
+from typing import List, Dict
 
 # Add parent directory to path to import models
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -18,6 +20,109 @@ from models.payment import Payment
 from models.payment_allocation import PaymentAllocation
 from models.nominal_account import NominalAccount
 from models.journal_entry import JournalEntry
+from models.tyre import Tyre
+
+
+def backup_tyres(db_path: str) -> List[Dict]:
+    """
+    Backup all tyres from the database before clearing.
+    
+    Args:
+        db_path: Path to the database file
+        
+    Returns:
+        List of tyre dictionaries
+    """
+    if not os.path.exists(db_path):
+        return []
+    
+    try:
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Check if tyres table exists
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='tyres'
+            """)
+            if not cursor.fetchone():
+                return []
+            
+            # Get all tyres
+            cursor.execute("SELECT * FROM tyres")
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+    except Exception as e:
+        print(f"Warning: Could not backup tyres: {str(e)}")
+        return []
+
+
+def restore_tyres(db_path: str, tyres_backup: List[Dict]) -> int:
+    """
+    Restore tyres to the database after clearing.
+    
+    Args:
+        db_path: Path to the database file
+        tyres_backup: List of tyre dictionaries to restore
+        
+    Returns:
+        Number of tyres restored
+    """
+    if not tyres_backup:
+        return 0
+    
+    try:
+        with sqlite3.connect(db_path, timeout=10.0) as conn:
+            cursor = conn.cursor()
+            
+            # Insert each tyre (excluding the id column so new IDs are auto-generated)
+            restored_count = 0
+            for tyre in tyres_backup:
+                try:
+                    cursor.execute("""
+                        INSERT INTO tyres (
+                            description, width, profile, diameter, speed_rating, load_index,
+                            pattern, oe_fitment, ean, manufacturer_code, brand, model,
+                            product_type, vehicle_type, rolling_resistance, wet_grip,
+                            noise_class, noise_performance, vehicle_class,
+                            created_date, updated_date, tyre_url, brand_url, run_flat
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        tyre.get('description', ''),
+                        tyre.get('width', ''),
+                        tyre.get('profile', ''),
+                        tyre.get('diameter', ''),
+                        tyre.get('speed_rating', ''),
+                        tyre.get('load_index', ''),
+                        tyre.get('pattern', ''),
+                        tyre.get('oe_fitment', ''),
+                        tyre.get('ean', ''),
+                        tyre.get('manufacturer_code', ''),
+                        tyre.get('brand', ''),
+                        tyre.get('model', ''),
+                        tyre.get('product_type', ''),
+                        tyre.get('vehicle_type', ''),
+                        tyre.get('rolling_resistance', ''),
+                        tyre.get('wet_grip', ''),
+                        tyre.get('noise_class', ''),
+                        tyre.get('noise_performance', ''),
+                        tyre.get('vehicle_class', ''),
+                        tyre.get('created_date', ''),
+                        tyre.get('updated_date', ''),
+                        tyre.get('tyre_url', ''),
+                        tyre.get('brand_url', ''),
+                        tyre.get('run_flat', '')
+                    ))
+                    restored_count += 1
+                except Exception as e:
+                    print(f"Warning: Could not restore tyre: {str(e)}")
+            
+            conn.commit()
+            return restored_count
+    except Exception as e:
+        print(f"Warning: Could not restore tyres: {str(e)}")
+        return 0
 
 
 def reset_database(db_path: str = "data/app.db"):
@@ -46,6 +151,7 @@ def reset_database(db_path: str = "data/app.db"):
     payment_allocation_model = PaymentAllocation(db_path)
     nominal_account_model = NominalAccount(db_path)
     journal_entry_model = JournalEntry(db_path)
+    tyre_model = Tyre(db_path)  # Initialize tyres table
     
     print("Database reset complete!")
     return {
@@ -59,7 +165,8 @@ def reset_database(db_path: str = "data/app.db"):
         'payment': payment_model,
         'payment_allocation': payment_allocation_model,
         'nominal_account': nominal_account_model,
-        'journal_entry': journal_entry_model
+        'journal_entry': journal_entry_model,
+        'tyre': tyre_model
     }
 
 
@@ -335,8 +442,26 @@ def main():
         return
     
     try:
+        # Backup tyres before clearing
+        print("\nBacking up tyres...")
+        tyres_backup = backup_tyres(db_path)
+        tyre_count = len(tyres_backup)
+        if tyre_count > 0:
+            print(f"  ✓ Backed up {tyre_count} tyres")
+        else:
+            print("  No tyres to backup")
+        
         # Reset database
         models = reset_database(db_path)
+        
+        # Restore tyres after reset
+        if tyre_count > 0:
+            print("\nRestoring tyres...")
+            restored_count = restore_tyres(db_path, tyres_backup)
+            if restored_count > 0:
+                print(f"  ✓ Restored {restored_count} tyres")
+            else:
+                print("  ✗ Failed to restore tyres")
         
         # Create two users
         print("\nCreating users...")
@@ -366,6 +491,8 @@ def main():
         
         print("\n" + "=" * 60)
         print("✓ Database reset and seeding completed successfully!")
+        if tyre_count > 0:
+            print(f"✓ {tyre_count} tyres preserved")
         print("=" * 60)
         print("\nCreated users:")
         for username, password, _ in created_users:

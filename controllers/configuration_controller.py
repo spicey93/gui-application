@@ -19,6 +19,7 @@ class ConfigurationController(QObject):
     bookkeeper_requested = Signal()
     vehicles_requested = Signal()
     services_requested = Signal()
+    sales_requested = Signal()
     logout_requested = Signal()
     types_changed = Signal()  # Emitted when types are created or deleted
     
@@ -43,6 +44,7 @@ class ConfigurationController(QObject):
         self.configuration_view.bookkeeper_requested.connect(self.handle_bookkeeper)
         self.configuration_view.vehicles_requested.connect(self.handle_vehicles)
         self.configuration_view.services_requested.connect(self.handle_services)
+        self.configuration_view.sales_requested.connect(self.handle_sales)
         self.configuration_view.logout_requested.connect(self.handle_logout)
         
         # Connect API key signals
@@ -121,6 +123,10 @@ class ConfigurationController(QObject):
     def handle_services(self) -> None:
         """Handle services navigation."""
         self.services_requested.emit()
+    
+    def handle_sales(self) -> None:
+        """Handle sales navigation."""
+        self.sales_requested.emit()
     
     def handle_logout(self) -> None:
         """Handle logout."""

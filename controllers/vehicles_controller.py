@@ -20,6 +20,7 @@ class VehiclesController(QObject):
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
     services_requested = Signal()
+    sales_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -46,14 +47,14 @@ class VehiclesController(QObject):
         self.vehicles_view.products_requested.connect(self.products_requested.emit)
         self.vehicles_view.inventory_requested.connect(self.inventory_requested.emit)
         self.vehicles_view.bookkeeper_requested.connect(self.bookkeeper_requested.emit)
-        self.vehicles_view.services_requested.connect(self.services_requested.emit)
-        self.vehicles_view.configuration_requested.connect(
-            self.configuration_requested.emit
-        )
-        self.vehicles_view.logout_requested.connect(self.logout_requested.emit)
+        self.vehicles_view.services_requested.connect(self.handle_services)
+        self.vehicles_view.sales_requested.connect(self.handle_sales)
+        self.vehicles_view.configuration_requested.connect(self.handle_configuration)
+        self.vehicles_view.logout_requested.connect(self.handle_logout)
         
         # Connect view action signals
         self.vehicles_view.vehicle_lookup_requested.connect(self.handle_vehicle_lookup)
+        self.vehicles_view.vehicle_api_lookup_requested.connect(self.handle_api_lookup)
         self.vehicles_view.vehicle_selected.connect(self.handle_vehicle_selected)
         self.vehicles_view.vehicle_delete_requested.connect(self.handle_vehicle_delete)
     
@@ -63,30 +64,56 @@ class VehiclesController(QObject):
         self.refresh_vehicles()
     
     def refresh_vehicles(self) -> None:
-        """Refresh the vehicles list and focus VRM input."""
+        """Clear the vehicles list and focus VRM input."""
         if self.user_id is None:
             return
-        vehicles = self.vehicle_model.get_all_vehicles(self.user_id)
-        self.vehicles_view.populate_vehicles(vehicles)
+        # Clear the table - don't show any vehicles until a search is performed
+        self.vehicles_view.populate_vehicles([])
         self.vehicles_view.focus_vrm_input()
     
     def handle_vehicle_lookup(self, vrm: str) -> None:
-        """Handle vehicle lookup request - check database first."""
+        """Handle vehicle search request - search database for partial VRM matches."""
         if self.user_id is None:
             self.vehicles_view.show_message("Error", "Not logged in", is_error=True)
             return
         
-        # Check if vehicle exists in database first
-        existing = self.vehicle_model.get_vehicle_by_vrm(self.user_id, vrm)
-        if existing:
-            # Vehicle found - show details
-            self.vehicles_view.show_vehicle_details(existing)
-            self.vehicles_view.clear_vrm_input()
+        # Validate that query is not empty
+        vrm = vrm.strip() if vrm else ""
+        if not vrm:
+            self.vehicles_view.show_message("Warning", "Please enter a VRM to search", is_error=False)
             return
         
-        # Vehicle not in database - ask user if they want to do API lookup
-        if not self.vehicles_view.confirm_api_lookup(vrm):
+        # Search for vehicles with partial VRM match
+        vehicles = self.vehicle_model.search_vehicles_by_vrm(self.user_id, vrm)
+        
+        if not vehicles:
+            self.vehicles_view.show_message(
+                "No Results", 
+                f"No vehicles found matching '{vrm}' in your database.",
+                is_error=False
+            )
+            # Clear the table
+            self.vehicles_view.populate_vehicles([])
             return
+        
+        # Populate table with search results
+        self.vehicles_view.populate_vehicles(vehicles)
+    
+    def handle_api_lookup(self, vrm: str) -> None:
+        """Handle external API lookup request for a VRM."""
+        if self.user_id is None:
+            self.vehicles_view.show_message("Error", "Not logged in", is_error=True)
+            return
+        
+        # Check if vehicle already exists in database
+        existing = self.vehicle_model.get_vehicle_by_vrm(self.user_id, vrm)
+        if existing:
+            reply = self.vehicles_view.confirm_api_lookup(
+                vrm, 
+                "Vehicle already exists in database. Update from API?"
+            )
+            if not reply:
+                return
         
         # Get API key
         api_key = self.api_key_model.get_api_key(self.user_id, "uk_vehicle_data")
@@ -150,7 +177,10 @@ class VehiclesController(QObject):
         
         vehicle = self.vehicle_model.get_vehicle_by_id(self.user_id, vehicle_id)
         if vehicle:
-            self.vehicles_view.show_vehicle_details(vehicle)
+            # Get customer and sales history for this vehicle
+            customer = self.vehicle_model.get_customer_for_vehicle(self.user_id, vehicle_id)
+            sales_history = self.vehicle_model.get_sales_history_for_vehicle(self.user_id, vehicle_id)
+            self.vehicles_view.show_vehicle_details(vehicle, customer, sales_history)
         else:
             self.vehicles_view.show_message("Error", "Vehicle not found", is_error=True)
     
@@ -164,4 +194,20 @@ class VehiclesController(QObject):
             self.refresh_vehicles()
         else:
             self.vehicles_view.show_message("Error", message, is_error=True)
+    
+    def handle_services(self) -> None:
+        """Handle services navigation."""
+        self.services_requested.emit()
+    
+    def handle_sales(self) -> None:
+        """Handle sales navigation."""
+        self.sales_requested.emit()
+    
+    def handle_configuration(self) -> None:
+        """Handle configuration navigation."""
+        self.configuration_requested.emit()
+    
+    def handle_logout(self) -> None:
+        """Handle logout."""
+        self.logout_requested.emit()
 

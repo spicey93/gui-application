@@ -153,6 +153,33 @@ class Vehicle:
         except Exception:
             return []
     
+    def search_vehicles_by_vrm(self, user_id: int, vrm_query: str) -> List[Dict[str, Any]]:
+        """
+        Search for vehicles by partial VRM match.
+        
+        Args:
+            user_id: The user ID to filter by
+            vrm_query: Partial VRM to search for (e.g., "LD" matches "LD07LTF", "HE69LDE")
+        
+        Returns:
+            List of matching vehicles (empty list if query is empty)
+        """
+        if not vrm_query or not vrm_query.strip():
+            return []
+        
+        vrm_query = self.normalize_vrm(vrm_query)
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM vehicles WHERE user_id = ? AND vrm LIKE ? ORDER BY vrm ASC",
+                    (user_id, f"%{vrm_query}%")
+                )
+                return [self._row_to_dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
+    
     def delete_vehicle(self, user_id: int, vehicle_id: int) -> Tuple[bool, str]:
         """Delete a vehicle."""
         try:
@@ -168,6 +195,63 @@ class Vehicle:
                 return False, "Vehicle not found"
         except Exception as e:
             return False, f"Failed to delete vehicle: {str(e)}"
+    
+    def get_customer_for_vehicle(self, user_id: int, vehicle_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get the customer associated with a vehicle (from most recent sales invoice).
+        
+        Args:
+            user_id: The user ID
+            vehicle_id: The vehicle ID
+        
+        Returns:
+            Customer dictionary or None if no customer found
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT DISTINCT c.id as internal_id, c.user_customer_id as id,
+                           c.name, c.phone, c.house_name_no, c.street_address,
+                           c.city, c.county, c.postcode, c.created_at
+                    FROM sales_invoices si
+                    JOIN customers c ON si.customer_id = c.id
+                    WHERE si.vehicle_id = ? AND si.user_id = ?
+                    ORDER BY si.document_date DESC, si.created_at DESC
+                    LIMIT 1
+                """, (vehicle_id, user_id))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+        except Exception:
+            return None
+    
+    def get_sales_history_for_vehicle(self, user_id: int, vehicle_id: int) -> List[Dict[str, Any]]:
+        """
+        Get sales history for a vehicle.
+        
+        Args:
+            user_id: The user ID
+            vehicle_id: The vehicle ID
+        
+        Returns:
+            List of sales invoice dictionaries
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, customer_id, vehicle_id, document_number, document_date,
+                           document_type, notes, subtotal, vat_amount, total, status,
+                           created_at, updated_at
+                    FROM sales_invoices
+                    WHERE vehicle_id = ? AND user_id = ?
+                    ORDER BY document_date DESC, document_number DESC
+                """, (vehicle_id, user_id))
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            return []
     
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a database row to a dictionary."""

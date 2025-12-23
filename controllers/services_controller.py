@@ -19,6 +19,7 @@ class ServicesController(QObject):
     inventory_requested = Signal()
     bookkeeper_requested = Signal()
     vehicles_requested = Signal()
+    sales_requested = Signal()
     configuration_requested = Signal()
     logout_requested = Signal()
     
@@ -47,6 +48,7 @@ class ServicesController(QObject):
         self.services_view.inventory_requested.connect(self.handle_inventory)
         self.services_view.bookkeeper_requested.connect(self.handle_bookkeeper)
         self.services_view.vehicles_requested.connect(self.handle_vehicles)
+        self.services_view.sales_requested.connect(self.handle_sales)
         self.services_view.configuration_requested.connect(self.handle_configuration)
         self.services_view.logout_requested.connect(self.handle_logout)
         self.services_view.create_requested.connect(self.handle_create)
@@ -180,6 +182,10 @@ class ServicesController(QObject):
     def handle_vehicles(self):
         """Handle vehicles navigation."""
         self.vehicles_requested.emit()
+    
+    def handle_sales(self):
+        """Handle sales navigation."""
+        self.sales_requested.emit()
     
     def handle_configuration(self):
         """Handle configuration navigation."""

@@ -22,6 +22,10 @@ from models.api_key import ApiKey
 from models.vehicle import Vehicle
 from models.tyre import Tyre
 from models.service import Service
+from models.sales_invoice import SalesInvoice
+from models.sales_invoice_item import SalesInvoiceItem
+from models.customer_payment import CustomerPayment
+from models.customer_payment_allocation import CustomerPaymentAllocation
 from views.login_view import LoginView
 from views.dashboard_view import DashboardView
 from views.suppliers_view import SuppliersView
@@ -32,6 +36,7 @@ from views.bookkeeper_view import BookkeeperView
 from views.configuration_view import ConfigurationView
 from views.vehicles_view import VehiclesView
 from views.services_view import ServicesView
+from views.sales_view import SalesView
 from views.shortcuts_dialog import ShortcutsDialog
 from controllers.login_controller import LoginController
 from controllers.dashboard_controller import DashboardController
@@ -43,6 +48,7 @@ from controllers.bookkeeper_controller import BookkeeperController
 from controllers.configuration_controller import ConfigurationController
 from controllers.vehicles_controller import VehiclesController
 from controllers.services_controller import ServicesController
+from controllers.sales_controller import SalesController
 from controllers.invoice_controller import InvoiceController
 from controllers.payment_controller import PaymentController
 
@@ -78,6 +84,10 @@ class Application(QMainWindow):
         self.vehicle_model = Vehicle()
         self.tyre_model = Tyre()
         self.service_model = Service()
+        self.sales_invoice_model = SalesInvoice()
+        self.sales_invoice_item_model = SalesInvoiceItem()
+        self.customer_payment_model = CustomerPayment()
+        self.customer_payment_allocation_model = CustomerPaymentAllocation()
         
         # Current user ID (None until login)
         self.current_user_id: Optional[int] = None
@@ -96,6 +106,7 @@ class Application(QMainWindow):
         self.bookkeeper_view = BookkeeperView()
         self.vehicles_view = VehiclesView()
         self.services_view = ServicesView()
+        self.sales_view = SalesView()
         self.configuration_view = ConfigurationView()
         
         # Add views to stacked widget
@@ -108,6 +119,7 @@ class Application(QMainWindow):
         self.bookkeeper_index = self.stacked_widget.addWidget(self.bookkeeper_view)
         self.vehicles_index = self.stacked_widget.addWidget(self.vehicles_view)
         self.services_index = self.stacked_widget.addWidget(self.services_view)
+        self.sales_index = self.stacked_widget.addWidget(self.sales_view)
         self.configuration_index = self.stacked_widget.addWidget(self.configuration_view)
         
         # Show login view initially
@@ -123,6 +135,7 @@ class Application(QMainWindow):
         self.bookkeeper_controller = None
         self.vehicles_controller = None
         self.services_controller = None
+        self.sales_controller = None
         self.configuration_controller = None
         self.invoice_controller = None
         self.payment_controller = None
@@ -137,6 +150,7 @@ class Application(QMainWindow):
         self.dashboard_controller.bookkeeper_requested.connect(self.on_bookkeeper)
         self.dashboard_controller.vehicles_requested.connect(self.on_vehicles)
         self.dashboard_controller.services_requested.connect(self.on_services)
+        self.dashboard_controller.sales_requested.connect(self.on_sales)
         self.dashboard_controller.configuration_requested.connect(self.on_configuration)
         
         # Center the window
@@ -198,8 +212,13 @@ class Application(QMainWindow):
         self.shortcut_vehicles.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_vehicles.activated.connect(self._navigate_to_vehicles)
         
-        # F9: Configuration
-        self.shortcut_configuration = QShortcut(QKeySequence("F9"), self)
+        # F9: Sales
+        self.shortcut_sales = QShortcut(QKeySequence("F9"), self)
+        self.shortcut_sales.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.shortcut_sales.activated.connect(self._navigate_to_sales)
+        
+        # F10: Configuration
+        self.shortcut_configuration = QShortcut(QKeySequence("F10"), self)
         self.shortcut_configuration.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_configuration.activated.connect(self._navigate_to_configuration)
         
@@ -301,6 +320,16 @@ class Application(QMainWindow):
             self.setWindowTitle("Services")
             self.setMinimumSize(800, 600)
     
+    def _navigate_to_sales(self):
+        """Navigate to sales if logged in."""
+        if self.current_user_id is not None:
+            if self.sales_controller:
+                self.sales_controller.refresh_documents()
+            self.sales_view.nav_panel.set_current_view("sales")
+            self.stacked_widget.setCurrentIndex(self.sales_index)
+            self.setWindowTitle("Sales")
+            self.setMinimumSize(800, 600)
+    
     def _navigate_to_configuration(self):
         """Navigate to configuration if logged in."""
         if self.current_user_id is not None:
@@ -321,6 +350,8 @@ class Application(QMainWindow):
                 self.products_view.add_product()
             elif current_index == self.services_index:
                 self.services_view.add_service()
+            elif current_index == self.sales_index:
+                self.sales_view.add_document()
             elif current_index == self.bookkeeper_index:
                 self.bookkeeper_view.add_account()
     
@@ -394,6 +425,7 @@ class Application(QMainWindow):
             self.suppliers_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.suppliers_controller.vehicles_requested.connect(self.on_vehicles)
             self.suppliers_controller.services_requested.connect(self.on_services)
+            self.suppliers_controller.sales_requested.connect(self.on_sales)
             self.suppliers_controller.configuration_requested.connect(self.on_configuration)
             self.suppliers_controller.logout_requested.connect(self.on_logout)
         else:
@@ -413,6 +445,7 @@ class Application(QMainWindow):
             self.customers_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.customers_controller.vehicles_requested.connect(self.on_vehicles)
             self.customers_controller.services_requested.connect(self.on_services)
+            self.customers_controller.sales_requested.connect(self.on_sales)
             self.customers_controller.configuration_requested.connect(self.on_configuration)
             self.customers_controller.logout_requested.connect(self.on_logout)
         else:
@@ -434,6 +467,7 @@ class Application(QMainWindow):
             self.products_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.products_controller.vehicles_requested.connect(self.on_vehicles)
             self.products_controller.services_requested.connect(self.on_services)
+            self.products_controller.sales_requested.connect(self.on_sales)
             self.products_controller.configuration_requested.connect(self.on_configuration)
             self.products_controller.logout_requested.connect(self.on_logout)
         else:
@@ -453,6 +487,7 @@ class Application(QMainWindow):
             self.inventory_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.inventory_controller.vehicles_requested.connect(self.on_vehicles)
             self.inventory_controller.services_requested.connect(self.on_services)
+            self.inventory_controller.sales_requested.connect(self.on_sales)
             self.inventory_controller.configuration_requested.connect(self.on_configuration)
             self.inventory_controller.logout_requested.connect(self.on_logout)
         else:
@@ -473,6 +508,7 @@ class Application(QMainWindow):
             self.bookkeeper_controller.inventory_requested.connect(self.on_inventory)
             self.bookkeeper_controller.vehicles_requested.connect(self.on_vehicles)
             self.bookkeeper_controller.services_requested.connect(self.on_services)
+            self.bookkeeper_controller.sales_requested.connect(self.on_sales)
             self.bookkeeper_controller.configuration_requested.connect(self.on_configuration)
             self.bookkeeper_controller.logout_requested.connect(self.on_logout)
         else:
@@ -493,6 +529,7 @@ class Application(QMainWindow):
             self.vehicles_controller.inventory_requested.connect(self.on_inventory)
             self.vehicles_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.vehicles_controller.services_requested.connect(self.on_services)
+            self.vehicles_controller.sales_requested.connect(self.on_sales)
             self.vehicles_controller.configuration_requested.connect(self.on_configuration)
             self.vehicles_controller.logout_requested.connect(self.on_logout)
         else:
@@ -513,10 +550,38 @@ class Application(QMainWindow):
             self.services_controller.inventory_requested.connect(self.on_inventory)
             self.services_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.services_controller.vehicles_requested.connect(self.on_vehicles)
+            self.services_controller.sales_requested.connect(self.on_sales)
             self.services_controller.configuration_requested.connect(self.on_configuration)
             self.services_controller.logout_requested.connect(self.on_logout)
         else:
             self.services_controller.set_user_id(user_id)
+        
+        # Initialize or update sales controller
+        if self.sales_controller is None:
+            self.sales_controller = SalesController(
+                self.sales_view,
+                self.sales_invoice_model,
+                self.sales_invoice_item_model,
+                self.customer_payment_model,
+                self.customer_payment_allocation_model,
+                self.customer_model,
+                self.product_model,
+                self.service_model,
+                self.vehicle_model,
+                user_id
+            )
+            self.sales_controller.dashboard_requested.connect(self.on_back_to_dashboard)
+            self.sales_controller.suppliers_requested.connect(self.on_suppliers)
+            self.sales_controller.customers_requested.connect(self.on_customers)
+            self.sales_controller.products_requested.connect(self.on_products)
+            self.sales_controller.inventory_requested.connect(self.on_inventory)
+            self.sales_controller.bookkeeper_requested.connect(self.on_bookkeeper)
+            self.sales_controller.vehicles_requested.connect(self.on_vehicles)
+            self.sales_controller.services_requested.connect(self.on_services)
+            self.sales_controller.configuration_requested.connect(self.on_configuration)
+            self.sales_controller.logout_requested.connect(self.on_logout)
+        else:
+            self.sales_controller.set_user_id(user_id)
         
         # Initialize or update configuration controller
         if self.configuration_controller is None:
@@ -533,6 +598,7 @@ class Application(QMainWindow):
             self.configuration_controller.bookkeeper_requested.connect(self.on_bookkeeper)
             self.configuration_controller.vehicles_requested.connect(self.on_vehicles)
             self.configuration_controller.services_requested.connect(self.on_services)
+            self.configuration_controller.sales_requested.connect(self.on_sales)
             self.configuration_controller.logout_requested.connect(self.on_logout)
         else:
             self.configuration_controller.set_user_id(user_id)
@@ -630,6 +696,18 @@ class Application(QMainWindow):
         # Switch to services view
         self.stacked_widget.setCurrentIndex(self.services_index)
         self.setWindowTitle("Services")
+        self.setMinimumSize(800, 600)
+    
+    def on_sales(self):
+        """Handle navigation to sales."""
+        # Refresh sales documents for current user
+        if self.sales_controller:
+            self.sales_controller.refresh_documents()
+        # Update navigation highlighting
+        self.sales_view.nav_panel.set_current_view("sales")
+        # Switch to sales view
+        self.stacked_widget.setCurrentIndex(self.sales_index)
+        self.setWindowTitle("Sales")
         self.setMinimumSize(800, 600)
     
     def on_configuration(self):
