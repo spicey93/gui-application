@@ -43,6 +43,7 @@ class VehiclesView(BaseTabbedView):
     def __init__(self):
         """Initialize the vehicles view."""
         super().__init__(title="Vehicles", current_view="vehicles")
+        self._all_vehicles_data: List[Dict] = []  # Store all vehicles for filtering
         self._create_widgets()
         self._setup_keyboard_navigation()
     
@@ -94,6 +95,17 @@ class VehiclesView(BaseTabbedView):
         lookup_layout.addStretch()
         
         layout.addWidget(lookup_group)
+        
+        # Search box
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setMinimumWidth(60)
+        self.vehicles_search_box = QLineEdit()
+        self.vehicles_search_box.setPlaceholderText("Search vehicles...")
+        self.vehicles_search_box.textChanged.connect(self._filter_vehicles)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.vehicles_search_box)
+        layout.addLayout(search_layout)
         
         # Vehicles table
         self.vehicles_table = VehiclesTableWidget(self._on_view_details)
@@ -337,9 +349,30 @@ class VehiclesView(BaseTabbedView):
     
     def populate_vehicles(self, vehicles: List[Dict[str, Any]]) -> None:
         """Populate the vehicles table."""
-        self.vehicles_table.setRowCount(len(vehicles))
+        # Store all vehicles for filtering
+        self._all_vehicles_data = vehicles
+        # Apply current filter
+        self._filter_vehicles()
+    
+    def _filter_vehicles(self) -> None:
+        """Filter vehicles based on search text."""
+        search_text = self.vehicles_search_box.text().strip().lower()
         
-        for row, vehicle in enumerate(vehicles):
+        if not search_text:
+            filtered_vehicles = self._all_vehicles_data
+        else:
+            filtered_vehicles = [
+                v for v in self._all_vehicles_data
+                if search_text in str(v.get('id', '')).lower()
+                or search_text in v.get('vrm', '').lower()
+                or search_text in v.get('make', '').lower()
+                or search_text in v.get('model', '').lower()
+                or search_text in str(v.get('build_year', '')).lower()
+            ]
+        
+        self.vehicles_table.setRowCount(len(filtered_vehicles))
+        
+        for row, vehicle in enumerate(filtered_vehicles):
             vrm_item = QTableWidgetItem(vehicle.get('vrm', ''))
             vrm_item.setData(Qt.ItemDataRole.UserRole, vehicle.get('id'))
             self.vehicles_table.setItem(row, 0, vrm_item)
@@ -356,7 +389,7 @@ class VehiclesView(BaseTabbedView):
             self.vehicles_table.setItem(row, 4, QTableWidgetItem(updated))
         
         # Select first row if there are results and set focus
-        if vehicles:
+        if filtered_vehicles:
             self.vehicles_table.selectRow(0)
             self.vehicles_table.setFocus()
     

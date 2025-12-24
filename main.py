@@ -197,25 +197,25 @@ class Application(QMainWindow):
         self.shortcut_services.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_services.activated.connect(self._navigate_to_services)
         
-        # F6: Inventory
-        self.shortcut_inventory = QShortcut(QKeySequence("F6"), self)
+        # F6: Sales
+        self.shortcut_sales = QShortcut(QKeySequence("F6"), self)
+        self.shortcut_sales.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.shortcut_sales.activated.connect(self._navigate_to_sales)
+        
+        # F7: Inventory
+        self.shortcut_inventory = QShortcut(QKeySequence("F7"), self)
         self.shortcut_inventory.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_inventory.activated.connect(self._navigate_to_inventory)
-        
-        # F7: Book Keeper
-        self.shortcut_bookkeeper = QShortcut(QKeySequence("F7"), self)
-        self.shortcut_bookkeeper.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.shortcut_bookkeeper.activated.connect(self._navigate_to_bookkeeper)
         
         # F8: Vehicles
         self.shortcut_vehicles = QShortcut(QKeySequence("F8"), self)
         self.shortcut_vehicles.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_vehicles.activated.connect(self._navigate_to_vehicles)
         
-        # F9: Sales
-        self.shortcut_sales = QShortcut(QKeySequence("F9"), self)
-        self.shortcut_sales.setContext(Qt.ShortcutContext.ApplicationShortcut)
-        self.shortcut_sales.activated.connect(self._navigate_to_sales)
+        # F9: Book Keeper
+        self.shortcut_bookkeeper = QShortcut(QKeySequence("F9"), self)
+        self.shortcut_bookkeeper.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.shortcut_bookkeeper.activated.connect(self._navigate_to_bookkeeper)
         
         # F10: Configuration
         self.shortcut_configuration = QShortcut(QKeySequence("F10"), self)

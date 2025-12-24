@@ -327,6 +327,7 @@ class SalesView(BaseTabbedView):
         self._customers_data: List[Dict] = []
         self._products_data: List[Dict] = []
         self._services_data: List[Dict] = []
+        self._all_documents_data: List[Dict] = []  # Store all documents for filtering
         self.selected_document_id: Optional[int] = None
         self._create_widgets()
         self._setup_keyboard_navigation()
@@ -355,7 +356,7 @@ class SalesView(BaseTabbedView):
         documents_widget = QWidget()
         documents_layout = QVBoxLayout(documents_widget)
         documents_layout.setSpacing(20)
-        documents_layout.setContentsMargins(0, 0, 0, 0)
+        documents_layout.setContentsMargins(10, 10, 10, 10)
         
         # Filter controls
         filter_layout = QHBoxLayout()
@@ -379,6 +380,17 @@ class SalesView(BaseTabbedView):
         
         filter_layout.addStretch()
         documents_layout.addLayout(filter_layout)
+        
+        # Search box
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setMinimumWidth(60)
+        self.documents_search_box = QLineEdit()
+        self.documents_search_box.setPlaceholderText("Search documents...")
+        self.documents_search_box.textChanged.connect(self._filter_documents)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.documents_search_box)
+        documents_layout.addLayout(search_layout)
         
         # Documents table
         self.documents_table = SalesDocumentsTableWidget(self._switch_to_details_tab)
@@ -415,7 +427,7 @@ class SalesView(BaseTabbedView):
         details_widget = QWidget()
         details_layout = QVBoxLayout(details_widget)
         details_layout.setSpacing(20)
-        details_layout.setContentsMargins(0, 0, 0, 0)
+        details_layout.setContentsMargins(10, 10, 10, 10)
         
         # Document info section
         info_group = QWidget()
@@ -489,9 +501,8 @@ class SalesView(BaseTabbedView):
     
     def _on_filter_changed(self) -> None:
         """Handle filter changes."""
-        # Just reload the documents that are already loaded with the new filters
-        if self._documents_data:
-            self.load_documents(self._documents_data)
+        # Reapply filters (including search)
+        self._filter_documents()
     
     def _on_document_selection_changed(self) -> None:
         """Handle document selection change."""
@@ -725,18 +736,40 @@ class SalesView(BaseTabbedView):
     
     def load_documents(self, documents: List[Dict]) -> None:
         """Load documents into the table."""
+        # Store all documents for filtering
+        self._all_documents_data = documents
         self._documents_data = documents
-        
-        # Apply filters
+        # Apply current filter
+        self._filter_documents()
+    
+    def _filter_documents(self) -> None:
+        """Filter documents based on search text and filters."""
+        # Apply customer and type filters first
         customer_filter = self.customer_filter_combo.currentData()
         type_filter = self.type_filter_combo.currentData()
         
-        filtered_documents = documents
+        filtered_documents = self._all_documents_data
         if customer_filter:
             filtered_documents = [d for d in filtered_documents if d.get('customer_id') == customer_filter]
         if type_filter:
             filtered_documents = [d for d in filtered_documents if d.get('document_type') == type_filter]
         
+        # Apply search text filter
+        search_text = self.documents_search_box.text().strip().lower()
+        if search_text:
+            # Get customer names for search
+            customer_map = {c.get('internal_id'): c.get('name', '') for c in self._customers_data}
+            filtered_documents = [
+                d for d in filtered_documents
+                if search_text in str(d.get('id', '')).lower()
+                or search_text in (customer_map.get(d.get('customer_id'), 'Unknown')).lower()
+                or search_text in d.get('document_number', '').lower()
+                or search_text in d.get('document_date', '').lower()
+                or search_text in d.get('document_type', '').lower()
+                or search_text in d.get('status', '').lower()
+            ]
+        
+        self._documents_data = filtered_documents
         self.documents_table.setRowCount(len(filtered_documents))
         
         for row, document in enumerate(filtered_documents):

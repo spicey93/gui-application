@@ -131,6 +131,7 @@ class CustomersView(BaseTabbedView):
         """Initialize the customers view."""
         super().__init__(title="Customers", current_view="customers")
         self._customers_data: List[Dict] = []
+        self._all_customers_data: List[Dict] = []  # Store all customers for filtering
         self.selected_customer_id: Optional[int] = None
         self._create_widgets()
         self._setup_keyboard_navigation()
@@ -166,7 +167,18 @@ class CustomersView(BaseTabbedView):
         customers_widget = QWidget()
         customers_layout = QVBoxLayout(customers_widget)
         customers_layout.setSpacing(20)
-        customers_layout.setContentsMargins(0, 0, 0, 0)
+        customers_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Search box
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setMinimumWidth(60)
+        self.customers_search_box = QLineEdit()
+        self.customers_search_box.setPlaceholderText("Search customers...")
+        self.customers_search_box.textChanged.connect(self._filter_customers)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.customers_search_box)
+        customers_layout.addLayout(search_layout)
         
         # Customers table
         self.customers_table = CustomersTableWidget(self._switch_to_details_tab)
@@ -204,7 +216,7 @@ class CustomersView(BaseTabbedView):
         details_widget = QWidget()
         details_layout = QVBoxLayout(details_widget)
         details_layout.setSpacing(20)
-        details_layout.setContentsMargins(30, 30, 30, 30)
+        details_layout.setContentsMargins(10, 10, 10, 10)
         
         # Placeholder label
         self.details_label = QLabel(
@@ -456,10 +468,32 @@ class CustomersView(BaseTabbedView):
     
     def load_customers(self, customers: List[Dict]) -> None:
         """Load customers into the table."""
+        # Store all customers for filtering
+        self._all_customers_data = customers
         self._customers_data = customers
-        self.customers_table.setRowCount(len(customers))
+        # Apply current filter
+        self._filter_customers()
+    
+    def _filter_customers(self) -> None:
+        """Filter customers based on search text."""
+        search_text = self.customers_search_box.text().strip().lower()
         
-        for row, customer in enumerate(customers):
+        if not search_text:
+            filtered_customers = self._all_customers_data
+        else:
+            filtered_customers = [
+                c for c in self._all_customers_data
+                if search_text in str(c.get("id", "")).lower()
+                or search_text in c.get("name", "").lower()
+                or search_text in c.get("phone", "").lower()
+                or search_text in c.get("city", "").lower()
+                or search_text in c.get("postcode", "").lower()
+            ]
+        
+        self._customers_data = filtered_customers
+        self.customers_table.setRowCount(len(filtered_customers))
+        
+        for row, customer in enumerate(filtered_customers):
             self.customers_table.setItem(
                 row, 0, QTableWidgetItem(str(customer.get("id", "")))
             )
@@ -477,7 +511,7 @@ class CustomersView(BaseTabbedView):
             )
         
         # Auto-select first row if data exists
-        if customers and self.customers_table.rowCount() > 0:
+        if filtered_customers and self.customers_table.rowCount() > 0:
             self.customers_table.selectRow(0)
             self._on_customer_selection_changed()
     

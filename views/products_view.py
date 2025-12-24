@@ -79,12 +79,24 @@ class ProductsView(BaseTabbedView):
         
         # Track selected product for stock audit tab
         self.selected_product_id: Optional[int] = None
+        self._all_products_data: List[Dict] = []  # Store all products for filtering
         
         # Tab 1: Products
         products_widget = QWidget()
         products_layout = QVBoxLayout(products_widget)
         products_layout.setSpacing(20)
-        products_layout.setContentsMargins(0, 0, 0, 0)
+        products_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Search box
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setMinimumWidth(60)
+        self.products_search_box = QLineEdit()
+        self.products_search_box.setPlaceholderText("Search products...")
+        self.products_search_box.textChanged.connect(self._filter_products)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.products_search_box)
+        products_layout.addLayout(search_layout)
         
         # Products table
         self.products_table = ProductsTableWidget(self._open_selected_product)
@@ -117,11 +129,14 @@ class ProductsView(BaseTabbedView):
         
         self.add_tab(products_widget, "Products (Ctrl+1)", "Ctrl+1")
         
-        # Tab 2: Stock Audit
+        # Tab 2: Details
+        self._create_product_details_tab()
+        
+        # Tab 3: Stock Audit
         audit_widget = QWidget()
         audit_layout = QVBoxLayout(audit_widget)
         audit_layout.setSpacing(20)
-        audit_layout.setContentsMargins(30, 30, 30, 30)
+        audit_layout.setContentsMargins(10, 10, 10, 10)
         
         # Instructions label
         self.audit_label = QLabel("Select a product from the Products tab to view stock audit history.")
@@ -150,7 +165,75 @@ class ProductsView(BaseTabbedView):
         
         audit_layout.addWidget(self.audit_table, stretch=1)
         
-        self.add_tab(audit_widget, "Stock Audit (Ctrl+2)", "Ctrl+2")
+        self.add_tab(audit_widget, "Stock Audit (Ctrl+3)", "Ctrl+3")
+    
+    def _create_product_details_tab(self):
+        """Create the product details tab."""
+        details_widget = QWidget()
+        details_layout = QVBoxLayout(details_widget)
+        details_layout.setSpacing(20)
+        details_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Placeholder label
+        self.product_details_label = QLabel(
+            "Select a product from the Products tab to view details."
+        )
+        self.product_details_label.setStyleSheet("font-size: 12px; color: gray;")
+        details_layout.addWidget(self.product_details_label)
+        
+        # Details form (hidden until product selected)
+        self.product_details_form = QWidget()
+        details_form_layout = QVBoxLayout(self.product_details_form)
+        details_form_layout.setSpacing(15)
+        details_form_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Store form widgets for later use
+        self.product_details_id_label = QLabel("")
+        self.product_details_stock_entry = QLineEdit()
+        self.product_details_desc_entry = QLineEdit()
+        self.product_details_type_combo = QComboBox()
+        self.product_details_type_combo.setEditable(True)
+        
+        # Add form rows
+        self._create_product_detail_row(details_form_layout, "ID:", self.product_details_id_label, read_only=True)
+        self._create_product_detail_row(details_form_layout, "Stock Number:", self.product_details_stock_entry)
+        self._create_product_detail_row(details_form_layout, "Description:", self.product_details_desc_entry)
+        self._create_product_detail_row(details_form_layout, "Type:", self.product_details_type_combo)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        self.product_details_save_button = QPushButton("Save Changes (Ctrl+Enter)")
+        self.product_details_save_button.setMinimumWidth(200)
+        self.product_details_save_button.setMinimumHeight(30)
+        self.product_details_save_button.clicked.connect(self._handle_save_product_details)
+        buttons_layout.addWidget(self.product_details_save_button)
+        
+        self.product_details_delete_button = QPushButton("Delete Product (Ctrl+Shift+D)")
+        self.product_details_delete_button.setMinimumWidth(220)
+        self.product_details_delete_button.setMinimumHeight(30)
+        self.product_details_delete_button.clicked.connect(self._handle_delete_product_details)
+        buttons_layout.addWidget(self.product_details_delete_button)
+        
+        details_form_layout.addLayout(buttons_layout)
+        details_form_layout.addStretch()
+        
+        self.product_details_form.hide()
+        details_layout.addWidget(self.product_details_form)
+        details_layout.addStretch()
+        
+        self.add_tab(details_widget, "Details (Ctrl+2)", "Ctrl+2")
+    
+    def _create_product_detail_row(self, layout: QVBoxLayout, label_text: str, widget: QWidget, read_only: bool = False):
+        """Create a detail row with label and widget."""
+        row_layout = QHBoxLayout()
+        label = QLabel(label_text)
+        label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        label.setMinimumWidth(150)
+        row_layout.addWidget(label)
+        row_layout.addWidget(widget, stretch=1)
+        layout.addLayout(row_layout)
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
@@ -161,6 +244,13 @@ class ProductsView(BaseTabbedView):
         
         # Arrow keys work automatically in QTableWidget
         self.products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        # Shortcuts for details tab
+        save_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self)
+        save_shortcut.activated.connect(self._handle_save_product_details)
+        
+        delete_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        delete_shortcut.activated.connect(self._handle_delete_product_details)
     
     def showEvent(self, event: QEvent):
         """Handle show event - set focus to table if it has data."""
@@ -185,36 +275,118 @@ class ProductsView(BaseTabbedView):
         self._open_selected_product()
     
     def _on_product_selection_changed(self):
-        """Handle product selection change - update stock audit if on audit tab."""
+        """Handle product selection change - update details or stock audit if on those tabs."""
         selected_items = self.products_table.selectedItems()
         if selected_items:
             row = selected_items[0].row()
             product_id = int(self.products_table.item(row, 0).text())
             self.selected_product_id = product_id
-            # If on stock audit tab, refresh audit data
+            # If on details tab, refresh details
             if self.tab_widget.currentIndex() == 1:
+                self.get_product_details_requested.emit(product_id)
+            # If on stock audit tab, refresh audit data
+            elif self.tab_widget.currentIndex() == 2:
                 self.stock_audit_requested.emit(product_id)
     
     def _on_tab_changed(self, index: int):
-        """Handle tab change - refresh stock audit if switching to audit tab."""
-        if index == 1 and self.selected_product_id:  # Stock Audit tab
+        """Handle tab change - refresh details or stock audit if switching to those tabs."""
+        if index == 1 and self.selected_product_id:  # Details tab
+            self.get_product_details_requested.emit(self.selected_product_id)
+        elif index == 2 and self.selected_product_id:  # Stock Audit tab
             self.stock_audit_requested.emit(self.selected_product_id)
     
     def _open_selected_product(self):
         """Open details for the currently selected product."""
-        selected_items = self.products_table.selectedItems()
-        if not selected_items:
-            return
-        
-        row = selected_items[0].row()
-        product_id = int(self.products_table.item(row, 0).text())
-        
-        # Request full product details from controller
-        self.get_product_details_requested.emit(product_id)
+        if self.selected_product_id is not None:
+            self.tab_widget.setCurrentIndex(1)
+            self.get_product_details_requested.emit(self.selected_product_id)
     
     def show_product_details(self, product: Dict[str, any], has_history: bool = False):
-        """Show product details dialog with full product data."""
-        self._show_product_details(product, has_history)
+        """Show product details in the details tab."""
+        self._update_product_details_tab(product, has_history)
+    
+    def _update_product_details_tab(self, product: Dict[str, any], has_history: bool = False):
+        """Update the details tab with selected product data."""
+        if not product:
+            self.product_details_label.show()
+            self.product_details_form.hide()
+            return
+        
+        self.product_details_label.hide()
+        self.product_details_form.show()
+        
+        # Populate form fields
+        self.product_details_id_label.setText(str(product.get('id', '')))
+        self.product_details_stock_entry.setText(product.get('stock_number', ''))
+        self.product_details_desc_entry.setText(product.get('description', ''))
+        
+        # Populate type combo
+        self.product_details_type_combo.clear()
+        self.product_details_type_combo.addItem("")
+        for type_name in getattr(self, 'available_types', []):
+            self.product_details_type_combo.addItem(type_name)
+        product_type = product.get('type', '')
+        if product_type:
+            index = self.product_details_type_combo.findText(product_type)
+            if index >= 0:
+                self.product_details_type_combo.setCurrentIndex(index)
+            else:
+                self.product_details_type_combo.setCurrentText(product_type)
+        
+        # Enable/disable delete button based on history
+        if has_history:
+            self.product_details_delete_button.setEnabled(False)
+            self.product_details_delete_button.setToolTip("Cannot delete product with transaction history")
+        else:
+            self.product_details_delete_button.setEnabled(True)
+            self.product_details_delete_button.setToolTip("")
+    
+    def _handle_save_product_details(self):
+        """Handle save product details button click."""
+        if self.selected_product_id is None:
+            return
+        
+        if self.tab_widget.currentIndex() != 1:
+            return
+        
+        stock_number = self.product_details_stock_entry.text().strip()
+        if not stock_number:
+            self.show_error_dialog("Stock number is required")
+            return
+        
+        description = self.product_details_desc_entry.text().strip()
+        product_type = self.product_details_type_combo.currentText().strip()
+        
+        # Check if it's a tyre product - if so, we need to use update_tyre_requested
+        # For now, use standard update - controller can handle it
+        self.update_requested.emit(
+            self.selected_product_id,
+            stock_number,
+            description,
+            product_type
+        )
+    
+    def _handle_delete_product_details(self):
+        """Handle delete product button click from details tab."""
+        if self.selected_product_id is None:
+            return
+        
+        if self.tab_widget.currentIndex() != 1:
+            return
+        
+        product_name = self.product_details_stock_entry.text()
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete product '{product_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.delete_requested.emit(self.selected_product_id)
+            self.selected_product_id = None
+            self.tab_widget.setCurrentIndex(0)
     
     def _show_product_details(self, product: Dict[str, any], has_history: bool = False):
         """Show product details in a popup dialog."""
@@ -1231,9 +1403,29 @@ class ProductsView(BaseTabbedView):
     
     def load_products(self, products: List[Dict[str, any]]):
         """Load products into the table."""
-        self.products_table.setRowCount(len(products))
+        # Store all products for filtering
+        self._all_products_data = products
+        # Apply current filter
+        self._filter_products()
+    
+    def _filter_products(self):
+        """Filter products based on search text."""
+        search_text = self.products_search_box.text().strip().lower()
         
-        for row, product in enumerate(products):
+        if not search_text:
+            filtered_products = self._all_products_data
+        else:
+            filtered_products = [
+                p for p in self._all_products_data
+                if search_text in str(p.get('id', '')).lower()
+                or search_text in p.get('stock_number', '').lower()
+                or search_text in p.get('description', '').lower()
+                or search_text in p.get('type', '').lower()
+            ]
+        
+        self.products_table.setRowCount(len(filtered_products))
+        
+        for row, product in enumerate(filtered_products):
             self.products_table.setItem(row, 0, QTableWidgetItem(str(product['id'])))
             self.products_table.setItem(row, 1, QTableWidgetItem(product.get('stock_number', '')))
             self.products_table.setItem(row, 2, QTableWidgetItem(product.get('description', '')))
@@ -1243,18 +1435,18 @@ class ProductsView(BaseTabbedView):
         self.products_table.resizeColumnsToContents()
         header = self.products_table.horizontalHeader()
         header.resizeSection(0, 80)
-        if len(products) > 0:
+        if len(filtered_products) > 0:
             header.resizeSection(1, 150)
             header.resizeSection(2, 300)
         
         # Auto-select first row and set focus to table if data exists
-        if len(products) > 0:
+        if len(filtered_products) > 0:
             self.products_table.selectRow(0)
             self.products_table.setFocus()
             # Ensure the first row is visible
             self.products_table.scrollToItem(self.products_table.item(0, 0))
             # Update selected product ID
-            self.selected_product_id = products[0]['id']
+            self.selected_product_id = filtered_products[0]['id']
     
     def load_stock_audit(self, history: Dict[str, List[Dict]]):
         """Load stock audit history into the audit table."""

@@ -47,6 +47,8 @@ class ServicesView(BaseTabbedView):
         super().__init__(title="Services", current_view="services")
         self.nominal_account_model: Optional["NominalAccount"] = None
         self._current_user_id: Optional[int] = None
+        self._all_services_data: List[Dict] = []  # Store all services for filtering
+        self.selected_service_id: Optional[int] = None
         self._create_widgets()
         self._setup_keyboard_navigation()
     
@@ -64,11 +66,42 @@ class ServicesView(BaseTabbedView):
             None  # Shortcut handled globally in main.py
         )
         
-        # Get content layout to add widgets directly (no tabs needed)
-        content_layout = self.get_content_layout()
+        # Create tabs widget
+        self.tab_widget = self.create_tabs()
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+        
+        # Tab 1: Services
+        self._create_services_tab()
+        
+        # Tab 2: Details
+        self._create_details_tab()
+        
+        # Tab 3: Sales History
+        self._create_sales_history_tab()
+        
+        # Set Services tab as default
+        self.tab_widget.setCurrentIndex(0)
+    
+    def _create_services_tab(self):
+        """Create the services list tab."""
+        services_widget = QWidget()
+        services_layout = QVBoxLayout(services_widget)
+        services_layout.setSpacing(20)
+        services_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Search box
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setMinimumWidth(60)
+        self.services_search_box = QLineEdit()
+        self.services_search_box.setPlaceholderText("Search services...")
+        self.services_search_box.textChanged.connect(self._filter_services)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.services_search_box)
+        services_layout.addLayout(search_layout)
         
         # Services table
-        self.services_table = ServicesTableWidget(self._open_selected_service)
+        self.services_table = ServicesTableWidget(self._switch_to_details_tab)
         self.services_table.setColumnCount(9)
         self.services_table.setHorizontalHeaderLabels([
             "ID", "Code", "Name", "Group", "Description", 
@@ -96,10 +129,151 @@ class ServicesView(BaseTabbedView):
         # Enable keyboard navigation
         self.services_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
+        # Selection changed - update selected service
+        self.services_table.itemSelectionChanged.connect(self._on_service_selection_changed)
+        
         # Double-click to edit
         self.services_table.itemDoubleClicked.connect(self._on_table_double_click)
         
-        content_layout.addWidget(self.services_table, stretch=1)
+        services_layout.addWidget(self.services_table, stretch=1)
+        self.add_tab(services_widget, "Services (Ctrl+1)", "Ctrl+1")
+    
+    def _create_details_tab(self):
+        """Create the details tab."""
+        details_widget = QWidget()
+        details_layout = QVBoxLayout(details_widget)
+        details_layout.setSpacing(20)
+        details_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Placeholder label
+        self.details_label = QLabel(
+            "Select a service from the Services tab to view details."
+        )
+        self.details_label.setStyleSheet("font-size: 12px; color: gray;")
+        details_layout.addWidget(self.details_label)
+        
+        # Details form (hidden until service selected)
+        self.details_form = QWidget()
+        details_form_layout = QVBoxLayout(self.details_form)
+        details_form_layout.setSpacing(15)
+        details_form_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Store form widgets for later use
+        self.details_id_label = QLabel("")
+        self.details_name_entry = QLineEdit()
+        self.details_code_entry = QLineEdit()
+        self.details_group_entry = QLineEdit()
+        self.details_desc_entry = QTextEdit()
+        self.details_desc_entry.setMaximumHeight(100)
+        self.details_est_cost_entry = QDoubleSpinBox()
+        self.details_est_cost_entry.setMaximum(999999.99)
+        self.details_est_cost_entry.setDecimals(2)
+        self.details_est_cost_entry.setPrefix("£")
+        self.details_vat_entry = QLineEdit()
+        self.details_vat_entry.setMaxLength(10)
+        self.details_income_combo = QComboBox()
+        self.details_retail_entry = QDoubleSpinBox()
+        self.details_retail_entry.setMaximum(999999.99)
+        self.details_retail_entry.setDecimals(2)
+        self.details_retail_entry.setPrefix("£")
+        self.details_trade_entry = QDoubleSpinBox()
+        self.details_trade_entry.setMaximum(999999.99)
+        self.details_trade_entry.setDecimals(2)
+        self.details_trade_entry.setPrefix("£")
+        
+        # Add form rows
+        self._create_detail_row(details_form_layout, "ID:", self.details_id_label, read_only=True)
+        self._create_detail_row(details_form_layout, "Name:", self.details_name_entry)
+        self._create_detail_row(details_form_layout, "Code:", self.details_code_entry)
+        self._create_detail_row(details_form_layout, "Group:", self.details_group_entry)
+        
+        # Description row
+        desc_row = QHBoxLayout()
+        desc_label = QLabel("Description:")
+        desc_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        desc_label.setMinimumWidth(150)
+        desc_row.addWidget(desc_label)
+        desc_row.addWidget(self.details_desc_entry, stretch=1)
+        details_form_layout.addLayout(desc_row)
+        
+        self._create_detail_row(details_form_layout, "Estimated Cost:", self.details_est_cost_entry)
+        self._create_detail_row(details_form_layout, "VAT Code:", self.details_vat_entry)
+        
+        # Income Account row
+        income_row = QHBoxLayout()
+        income_label = QLabel("Income Account:")
+        income_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        income_label.setMinimumWidth(150)
+        income_row.addWidget(income_label)
+        income_row.addWidget(self.details_income_combo, stretch=1)
+        details_form_layout.addLayout(income_row)
+        
+        self._create_detail_row(details_form_layout, "Retail Price:", self.details_retail_entry)
+        self._create_detail_row(details_form_layout, "Trade Price:", self.details_trade_entry)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addStretch()
+        
+        self.details_save_button = QPushButton("Save Changes (Ctrl+Enter)")
+        self.details_save_button.setMinimumWidth(200)
+        self.details_save_button.setMinimumHeight(30)
+        self.details_save_button.clicked.connect(self._handle_save_details)
+        buttons_layout.addWidget(self.details_save_button)
+        
+        self.details_delete_button = QPushButton("Delete Service (Ctrl+Shift+D)")
+        self.details_delete_button.setMinimumWidth(220)
+        self.details_delete_button.setMinimumHeight(30)
+        self.details_delete_button.clicked.connect(self._handle_delete_details)
+        buttons_layout.addWidget(self.details_delete_button)
+        
+        details_form_layout.addLayout(buttons_layout)
+        details_form_layout.addStretch()
+        
+        self.details_form.hide()
+        details_layout.addWidget(self.details_form)
+        details_layout.addStretch()
+        
+        self.add_tab(details_widget, "Details (Ctrl+2)", "Ctrl+2")
+    
+    def _create_detail_row(self, layout: QVBoxLayout, label_text: str, widget: QWidget, read_only: bool = False):
+        """Create a detail row with label and widget."""
+        row_layout = QHBoxLayout()
+        label = QLabel(label_text)
+        label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        label.setMinimumWidth(150)
+        row_layout.addWidget(label)
+        row_layout.addWidget(widget, stretch=1)
+        layout.addLayout(row_layout)
+    
+    def _create_sales_history_tab(self):
+        """Create the sales history tab."""
+        sales_widget = QWidget()
+        sales_layout = QVBoxLayout(sales_widget)
+        sales_layout.setSpacing(20)
+        sales_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Placeholder label
+        self.sales_history_label = QLabel(
+            "Select a service from the Services tab to view sales history."
+        )
+        self.sales_history_label.setStyleSheet("font-size: 12px; color: gray;")
+        sales_layout.addWidget(self.sales_history_label)
+        
+        # Sales history table
+        self.sales_history_table = QTableWidget()
+        self.sales_history_table.setColumnCount(7)
+        self.sales_history_table.setHorizontalHeaderLabels([
+            "Document Number", "Date", "Customer", "Quantity", "Unit Price", "VAT", "Total"
+        ])
+        self.sales_history_table.horizontalHeader().setStretchLastSection(True)
+        self.sales_history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.sales_history_table.setAlternatingRowColors(True)
+        self.sales_history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.sales_history_table.hide()
+        
+        sales_layout.addWidget(self.sales_history_table, stretch=1)
+        self.add_tab(sales_widget, "Sales History (Ctrl+3)", "Ctrl+3")
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
@@ -109,16 +283,24 @@ class ServicesView(BaseTabbedView):
         
         # Arrow keys work automatically in QTableWidget
         self.services_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        # Shortcuts for details tab
+        save_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self)
+        save_shortcut.activated.connect(self._handle_save_details)
+        
+        delete_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        delete_shortcut.activated.connect(self._handle_delete_details)
     
     def showEvent(self, event: QEvent):
         """Handle show event - set focus to table if it has data."""
         super().showEvent(event)
-        # Set focus to table if it has rows
-        if self.services_table.rowCount() > 0:
+        # Set focus to table if it has rows and we're on the services tab
+        if self.tab_widget.currentIndex() == 0 and self.services_table.rowCount() > 0:
             self.services_table.setFocus()
             # Ensure first row is selected if nothing is selected
             if not self.services_table.selectedItems():
                 self.services_table.selectRow(0)
+                self._on_service_selection_changed()
     
     def _handle_add_service(self):
         """Handle Add Service button click."""
@@ -130,20 +312,60 @@ class ServicesView(BaseTabbedView):
     
     def _open_selected_service(self):
         """Open details for the currently selected service."""
+        self._switch_to_details_tab()
+    
+    def _switch_to_details_tab(self):
+        """Switch to the details tab."""
+        if self.selected_service_id is not None:
+            self.tab_widget.setCurrentIndex(1)
+    
+    def _on_service_selection_changed(self):
+        """Handle service selection change."""
         selected_items = self.services_table.selectedItems()
-        if not selected_items:
-            return
-        
-        row = selected_items[0].row()
-        service_id = int(self.services_table.item(row, 0).text())
-        # Request full service details from controller
-        self.get_service_details_requested.emit(service_id)
+        if selected_items:
+            row = selected_items[0].row()
+            service_id = int(self.services_table.item(row, 0).text())
+            self.selected_service_id = service_id
+            if self.tab_widget.currentIndex() == 1:
+                # Request full service details from controller
+                self.get_service_details_requested.emit(service_id)
+    
+    def _on_tab_changed(self, index: int):
+        """Handle tab change."""
+        if index == 1:  # Details tab
+            if self.selected_service_id:
+                self.get_service_details_requested.emit(self.selected_service_id)
+        elif index == 2:  # Sales History tab
+            if self.selected_service_id:
+                # TODO: Request sales history from controller
+                pass
     
     def load_services(self, services: List[Dict[str, any]]):
         """Load services into the table."""
-        self.services_table.setRowCount(len(services))
+        # Store all services for filtering
+        self._all_services_data = services
+        # Apply current filter
+        self._filter_services()
+    
+    def _filter_services(self):
+        """Filter services based on search text."""
+        search_text = self.services_search_box.text().strip().lower()
         
-        for row, service in enumerate(services):
+        if not search_text:
+            filtered_services = self._all_services_data
+        else:
+            filtered_services = [
+                s for s in self._all_services_data
+                if search_text in str(s.get('id', '')).lower()
+                or search_text in s.get('code', '').lower()
+                or search_text in s.get('name', '').lower()
+                or search_text in (s.get('group_name', '') or '').lower()
+                or search_text in (s.get('description', '') or '').lower()
+            ]
+        
+        self.services_table.setRowCount(len(filtered_services))
+        
+        for row, service in enumerate(filtered_services):
             # ID
             id_item = QTableWidgetItem(str(service.get('id', '')))
             id_item.setData(Qt.ItemDataRole.UserRole, service.get('id'))
@@ -370,7 +592,97 @@ class ServicesView(BaseTabbedView):
         dialog.exec()
     
     def show_service_details(self, service: Dict[str, any]):
-        """Show service details dialog with full service data."""
+        """Show service details in the details tab."""
+        self._update_details_tab(service)
+    
+    def _update_details_tab(self, service: Dict[str, any]):
+        """Update the details tab with selected service data."""
+        if not service:
+            self.details_label.show()
+            self.details_form.hide()
+            return
+        
+        self.details_label.hide()
+        self.details_form.show()
+        
+        # Populate form fields
+        self.details_id_label.setText(str(service.get('id', '')))
+        self.details_name_entry.setText(service.get('name', ''))
+        self.details_code_entry.setText(service.get('code', ''))
+        self.details_group_entry.setText(service.get('group_name', '') or '')
+        self.details_desc_entry.setPlainText(service.get('description', '') or '')
+        self.details_est_cost_entry.setValue(service.get('estimated_cost', 0.0) or 0.0)
+        self.details_vat_entry.setText(service.get('vat_code', 'S'))
+        self.details_retail_entry.setValue(service.get('retail_price', 0.0) or 0.0)
+        self.details_trade_entry.setValue(service.get('trade_price', 0.0) or 0.0)
+        
+        # Populate income account combo
+        self.details_income_combo.clear()
+        self.details_income_combo.addItem("")  # Empty option
+        current_income_account_id = service.get('income_account_id')
+        current_index = 0
+        if self.nominal_account_model and self._current_user_id:
+            accounts = self.nominal_account_model.get_all(self._current_user_id)
+            for idx, account in enumerate(accounts):
+                if account.get('account_type') == 'Income':
+                    display_text = f"{account.get('account_code')} - {account.get('account_name')}"
+                    account_id = account.get('id')
+                    self.details_income_combo.addItem(display_text, account_id)
+                    if account_id == current_income_account_id:
+                        current_index = idx + 1  # +1 for empty option
+        self.details_income_combo.setCurrentIndex(current_index)
+    
+    def _handle_save_details(self):
+        """Handle save details button click."""
+        if self.selected_service_id is None:
+            return
+        
+        if self.tab_widget.currentIndex() != 1:
+            return
+        
+        name = self.details_name_entry.text().strip()
+        code = self.details_code_entry.text().strip()
+        if not name or not code:
+            self.show_error_dialog("Name and code are required")
+            return
+        
+        self.update_requested.emit(
+            self.selected_service_id,
+            name,
+            code,
+            self.details_group_entry.text().strip(),
+            self.details_desc_entry.toPlainText().strip(),
+            self.details_est_cost_entry.value(),
+            self.details_vat_entry.text().strip() or 'S',
+            self.details_income_combo.currentData() if self.details_income_combo.currentData() else 0,
+            self.details_retail_entry.value(),
+            self.details_trade_entry.value()
+        )
+    
+    def _handle_delete_details(self):
+        """Handle delete button click from details tab."""
+        if self.selected_service_id is None:
+            return
+        
+        if self.tab_widget.currentIndex() != 1:
+            return
+        
+        service_name = self.details_name_entry.text()
+        reply = QMessageBox.question(
+            self,
+            "Confirm Delete",
+            f"Are you sure you want to delete service '{service_name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.delete_requested.emit(self.selected_service_id)
+            self.selected_service_id = None
+            self.tab_widget.setCurrentIndex(0)
+    
+    def show_service_details_dialog(self, service: Dict[str, any]):
+        """Show service details dialog with full service data (legacy method for backward compatibility)."""
         dialog = QDialog(self)
         dialog.setWindowTitle("Service Details")
         dialog.setModal(True)

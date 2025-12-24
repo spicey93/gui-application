@@ -134,12 +134,24 @@ class SuppliersView(BaseTabbedView):
         
         # Track selected supplier for details tab
         self.selected_supplier_id: Optional[int] = None
+        self._all_suppliers_data: List[Dict] = []  # Store all suppliers for filtering
         
         # Tab 1: Suppliers
         suppliers_widget = QWidget()
         suppliers_layout = QVBoxLayout(suppliers_widget)
         suppliers_layout.setSpacing(20)
-        suppliers_layout.setContentsMargins(0, 0, 0, 0)
+        suppliers_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Search box
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_label.setMinimumWidth(60)
+        self.suppliers_search_box = QLineEdit()
+        self.suppliers_search_box.setPlaceholderText("Search suppliers...")
+        self.suppliers_search_box.textChanged.connect(self._filter_suppliers)
+        search_layout.addWidget(search_label)
+        search_layout.addWidget(self.suppliers_search_box)
+        suppliers_layout.addLayout(search_layout)
         
         # Suppliers table
         self.suppliers_table = SuppliersTableWidget(self._switch_to_details_tab)
@@ -1072,9 +1084,28 @@ class SuppliersView(BaseTabbedView):
     
     def load_suppliers(self, suppliers: List[Dict[str, any]]):
         """Load suppliers into the table."""
-        self.suppliers_table.setRowCount(len(suppliers))
+        # Store all suppliers for filtering
+        self._all_suppliers_data = suppliers
+        # Apply current filter
+        self._filter_suppliers()
+    
+    def _filter_suppliers(self):
+        """Filter suppliers based on search text."""
+        search_text = self.suppliers_search_box.text().strip().lower()
         
-        for row, supplier in enumerate(suppliers):
+        if not search_text:
+            filtered_suppliers = self._all_suppliers_data
+        else:
+            filtered_suppliers = [
+                s for s in self._all_suppliers_data
+                if search_text in str(s.get('id', '')).lower()
+                or search_text in str(s.get('account_number', '')).lower()
+                or search_text in str(s.get('name', '')).lower()
+            ]
+        
+        self.suppliers_table.setRowCount(len(filtered_suppliers))
+        
+        for row, supplier in enumerate(filtered_suppliers):
             self.suppliers_table.setItem(row, 0, QTableWidgetItem(str(supplier['id'])))
             self.suppliers_table.setItem(row, 1, QTableWidgetItem(supplier['account_number']))
             self.suppliers_table.setItem(row, 2, QTableWidgetItem(supplier['name']))
@@ -1091,12 +1122,12 @@ class SuppliersView(BaseTabbedView):
         self.suppliers_table.resizeColumnsToContents()
         header = self.suppliers_table.horizontalHeader()
         header.resizeSection(0, 80)
-        if len(suppliers) > 0:
+        if len(filtered_suppliers) > 0:
             header.resizeSection(1, 200)
             header.resizeSection(3, 150)
         
         # Auto-select first row and set focus to table if data exists
-        if len(suppliers) > 0:
+        if len(filtered_suppliers) > 0:
             self.suppliers_table.selectRow(0)
             self.suppliers_table.setFocus()
             # Ensure the first row is visible
@@ -1417,7 +1448,8 @@ class SuppliersView(BaseTabbedView):
         manual_vat_override = [None]  # Use list to allow modification in nested functions
         
         vat_label = QLabel("VAT: £0.00")
-        vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline;")
+        vat_label.setStyleSheet("font-size: 12px; text-decoration: underline;")
+        vat_label.setCursor(Qt.CursorShape.PointingHandCursor)
         vat_label.setToolTip("Click to manually edit VAT amount (Advanced)")
         
         def handle_vat_label_click():
@@ -1567,10 +1599,10 @@ class SuppliersView(BaseTabbedView):
             # Show indicator if VAT is manually overridden
             if manual_vat_override[0] is not None:
                 vat_label.setText(f"VAT: £{vat_amount:.2f} (Manual)")
-                vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline; color: #c00000;")
+                vat_label.setStyleSheet("font-size: 12px; text-decoration: underline; color: #c00000;")
             else:
                 vat_label.setText(f"VAT: £{vat_amount:.2f}")
-                vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline;")
+                vat_label.setStyleSheet("font-size: 12px; text-decoration: underline;")
             total_label.setText(f"Total: £{total:.2f}")
         
         def edit_invoice_item(row):
@@ -2826,7 +2858,8 @@ class SuppliersView(BaseTabbedView):
         totals_layout.addWidget(subtotal_label)
         
         vat_label = QLabel("VAT: £0.00")
-        vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline;")
+        vat_label.setStyleSheet("font-size: 12px; text-decoration: underline;")
+        vat_label.setCursor(Qt.CursorShape.PointingHandCursor)
         vat_label.setToolTip("Click to manually edit VAT amount (Advanced)")
         
         def handle_vat_label_click():

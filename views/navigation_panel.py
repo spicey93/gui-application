@@ -85,19 +85,19 @@ class NavigationPanel(QFrame):
         self.services_button.clicked.connect(self._handle_services)
         nav_layout.addWidget(self.services_button)
         
+        # Sales menu item
+        self.sales_button = QPushButton("Sales (F6)")
+        self.sales_button.setObjectName("navButton")
+        self.sales_button.setMinimumHeight(30)
+        self.sales_button.clicked.connect(self._handle_sales)
+        nav_layout.addWidget(self.sales_button)
+        
         # Inventory menu item
-        self.inventory_button = QPushButton("Inventory (F6)")
+        self.inventory_button = QPushButton("Inventory (F7)")
         self.inventory_button.setObjectName("navButton")
         self.inventory_button.setMinimumHeight(30)
         self.inventory_button.clicked.connect(self._handle_inventory)
         nav_layout.addWidget(self.inventory_button)
-        
-        # Book Keeper menu item
-        self.bookkeeper_button = QPushButton("Book Keeper (F7)")
-        self.bookkeeper_button.setObjectName("navButton")
-        self.bookkeeper_button.setMinimumHeight(30)
-        self.bookkeeper_button.clicked.connect(self._handle_bookkeeper)
-        nav_layout.addWidget(self.bookkeeper_button)
         
         # Vehicles menu item
         self.vehicles_button = QPushButton("Vehicles (F8)")
@@ -106,12 +106,12 @@ class NavigationPanel(QFrame):
         self.vehicles_button.clicked.connect(self._handle_vehicles)
         nav_layout.addWidget(self.vehicles_button)
         
-        # Sales menu item
-        self.sales_button = QPushButton("Sales (F9)")
-        self.sales_button.setObjectName("navButton")
-        self.sales_button.setMinimumHeight(30)
-        self.sales_button.clicked.connect(self._handle_sales)
-        nav_layout.addWidget(self.sales_button)
+        # Book Keeper menu item
+        self.bookkeeper_button = QPushButton("Book Keeper (F9)")
+        self.bookkeeper_button.setObjectName("navButton")
+        self.bookkeeper_button.setMinimumHeight(30)
+        self.bookkeeper_button.clicked.connect(self._handle_bookkeeper)
+        nav_layout.addWidget(self.bookkeeper_button)
         
         # Configuration menu item
         self.config_button = QPushButton("Configuration (F10)")
@@ -144,16 +144,16 @@ class NavigationPanel(QFrame):
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
-        # Tab order: Dashboard -> Suppliers -> Customers -> Products -> Services -> Inventory -> Book Keeper -> Vehicles -> Sales -> Configuration -> Logout
+        # Tab order: Dashboard -> Suppliers -> Customers -> Products -> Services -> Sales -> Inventory -> Vehicles -> Book Keeper -> Configuration -> Logout
         self.setTabOrder(self.dashboard_button, self.suppliers_button)
         self.setTabOrder(self.suppliers_button, self.customers_button)
         self.setTabOrder(self.customers_button, self.products_button)
         self.setTabOrder(self.products_button, self.services_button)
-        self.setTabOrder(self.services_button, self.inventory_button)
-        self.setTabOrder(self.inventory_button, self.bookkeeper_button)
-        self.setTabOrder(self.bookkeeper_button, self.vehicles_button)
-        self.setTabOrder(self.vehicles_button, self.sales_button)
-        self.setTabOrder(self.sales_button, self.config_button)
+        self.setTabOrder(self.services_button, self.sales_button)
+        self.setTabOrder(self.sales_button, self.inventory_button)
+        self.setTabOrder(self.inventory_button, self.vehicles_button)
+        self.setTabOrder(self.vehicles_button, self.bookkeeper_button)
+        self.setTabOrder(self.bookkeeper_button, self.config_button)
         self.setTabOrder(self.config_button, self.logout_button)
         
         # Arrow keys for navigation panel
