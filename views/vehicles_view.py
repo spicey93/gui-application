@@ -114,7 +114,7 @@ class VehiclesView(BaseTabbedView):
         self.vehicles_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.vehicles_table.doubleClicked.connect(self._on_vehicle_double_clicked)
         
-        layout.addWidget(self.vehicles_table)
+        layout.addWidget(self.vehicles_table, stretch=1)
         
         # Action buttons
         button_layout = QHBoxLayout()
@@ -179,7 +179,7 @@ class VehiclesView(BaseTabbedView):
             QHeaderView.ResizeMode.Stretch
         )
         self.tyre_table.setAlternatingRowColors(True)
-        self.tyre_layout.addWidget(self.tyre_table)
+        self.tyre_layout.addWidget(self.tyre_table, stretch=1)
         details_layout.addWidget(self.tyre_group)
         
         # Hub/Fixing info
@@ -269,7 +269,7 @@ class VehiclesView(BaseTabbedView):
             QTableWidget.SelectionBehavior.SelectRows
         )
         self.sales_history_table.setAlternatingRowColors(True)
-        layout.addWidget(self.sales_history_table)
+        layout.addWidget(self.sales_history_table, stretch=1)
         
         # Back button
         back_layout = QHBoxLayout()

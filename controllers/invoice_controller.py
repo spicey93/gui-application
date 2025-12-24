@@ -87,6 +87,39 @@ class InvoiceController(QObject):
         
         return success, message
     
+    def update_invoice_totals(self, invoice_id: int, subtotal: float, vat_amount: float, total: float) -> tuple[bool, str]:
+        """
+        Update invoice totals directly (for manual VAT override).
+        
+        Args:
+            invoice_id: Invoice ID
+            subtotal: Subtotal amount
+            vat_amount: VAT amount
+            total: Total amount
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        success, message = self.invoice_model.update_totals(invoice_id, subtotal, vat_amount, total, self.user_id)
+        if success:
+            self.invoice_updated.emit()
+        return success, message
+    
+    def recalculate_invoice_totals(self, invoice_id: int) -> tuple[bool, str]:
+        """
+        Recalculate invoice totals from items.
+        
+        Args:
+            invoice_id: Invoice ID
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        success, message = self.invoice_model.calculate_totals(invoice_id, self.user_id)
+        if success:
+            self.invoice_updated.emit()
+        return success, message
+    
     def delete_invoice(self, invoice_id: int) -> tuple[bool, str]:
         """
         Delete an invoice.

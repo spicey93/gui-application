@@ -196,7 +196,7 @@ class CustomersView(BaseTabbedView):
         )
         self.customers_table.itemDoubleClicked.connect(self._switch_to_details_tab)
         
-        customers_layout.addWidget(self.customers_table)
+        customers_layout.addWidget(self.customers_table, stretch=1)
         self.add_tab(customers_widget, "Customers (Ctrl+1)", "Ctrl+1")
     
     def _create_details_tab(self) -> None:

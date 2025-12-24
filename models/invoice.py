@@ -283,6 +283,41 @@ class Invoice:
         except Exception as e:
             return False, f"Error calculating totals: {str(e)}"
     
+    def update_totals(self, invoice_id: int, subtotal: float, vat_amount: float, total: float, user_id: int) -> Tuple[bool, str]:
+        """
+        Update invoice totals directly (for manual VAT override).
+        
+        Args:
+            invoice_id: Invoice ID
+            subtotal: Subtotal amount
+            vat_amount: VAT amount
+            total: Total amount
+            user_id: ID of the user
+        
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Check if invoice exists
+                cursor.execute("SELECT id FROM invoices WHERE id = ? AND user_id = ?", (invoice_id, user_id))
+                if not cursor.fetchone():
+                    return False, "Invoice not found"
+                
+                # Update invoice totals
+                cursor.execute("""
+                    UPDATE invoices 
+                    SET subtotal = ?, vat_amount = ?, total = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND user_id = ?
+                """, (subtotal, vat_amount, total, invoice_id, user_id))
+                
+                conn.commit()
+            return True, "Totals updated successfully"
+        except Exception as e:
+            return False, f"Error updating totals: {str(e)}"
+    
     def get_outstanding_balance(self, invoice_id: int, user_id: int) -> float:
         """
         Calculate outstanding balance for an invoice (total - allocated payments).

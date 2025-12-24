@@ -70,8 +70,8 @@ class LoginView(QWidget):
         
         # Autofill in dev mode
         if self._is_dev_mode():
-            self.username_entry.setText("user1")
-            self.password_entry.setText("password1")
+            self.username_entry.setText("test")
+            self.password_entry.setText("test")
             # Set focus to password entry so user can just press Enter
             self.password_entry.setFocus()
         else:

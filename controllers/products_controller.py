@@ -54,6 +54,7 @@ class ProductsController(QObject):
         self.products_view.add_product_type_requested.connect(self.handle_add_product_type)
         self.products_view.catalogue_requested.connect(self.handle_catalogue)
         self.products_view.get_product_details_requested.connect(self.handle_get_product_details)
+        self.products_view.stock_audit_requested.connect(self.handle_stock_audit)
         
         # Set tyre_model in view for brand/model dropdowns
         self.products_view.tyre_model = self.tyre_model
@@ -197,7 +198,7 @@ class ProductsController(QObject):
         brand: str, model: str, pattern: str, width: str, profile: str, diameter: str,
         speed_rating: str, load_index: str, oe_fitment: str, ean: str, manufacturer_code: str,
         vehicle_type: str, product_type: str, rolling_resistance: str, wet_grip: str,
-        run_flat: str, tyre_url: str, brand_url: str
+        noise_class: str, noise_performance: str, run_flat: str, tyre_url: str, brand_url: str
     ):
         """Handle update tyre product."""
         # Ensure product type exists before updating product
@@ -222,6 +223,8 @@ class ProductsController(QObject):
             tyre_product_type=product_type or None,
             tyre_rolling_resistance=rolling_resistance or None,
             tyre_wet_grip=wet_grip or None,
+            tyre_noise_class=noise_class or None,
+            tyre_noise_performance=noise_performance or None,
             tyre_run_flat=run_flat or None,
             tyre_url=tyre_url or None,
             tyre_brand_url=brand_url or None
@@ -237,12 +240,22 @@ class ProductsController(QObject):
         """Handle get product details request."""
         product = self.product_model.get_by_id(product_id, self.user_id)
         if product:
-            self.products_view.show_product_details(product)
+            # Check if product has history
+            has_history = self.has_product_history(product_id, self.user_id)
+            self.products_view.show_product_details(product, has_history)
         else:
             self.products_view.show_error_dialog("Product not found")
     
     def handle_delete(self, product_id: int):
         """Handle delete product."""
+        # Check if product has history
+        if self.has_product_history(product_id, self.user_id):
+            self.products_view.show_error_dialog(
+                "Cannot delete product with transaction history. "
+                "This product has been used in invoices or sales."
+            )
+            return
+        
         success, message = self.product_model.delete(product_id, self.user_id)
         
         if success:
@@ -320,4 +333,43 @@ class ProductsController(QObject):
         
         catalogue_dialog = TyreCatalogueView(self.tyre_model, self.products_view)
         catalogue_dialog.exec()
+    
+    def handle_stock_audit(self, product_id: int):
+        """Handle stock audit request for a product."""
+        # Get product to find internal_id
+        product = self.product_model.get_by_id(product_id, self.user_id)
+        if not product:
+            self.products_view.show_error_dialog("Product not found")
+            return
+        
+        internal_id = product.get('internal_id')
+        if not internal_id:
+            self.products_view.show_error_dialog("Product ID not found")
+            return
+        
+        # Get history from model
+        history = self.product_model.get_history(internal_id)
+        self.products_view.load_stock_audit(history)
+    
+    def has_product_history(self, product_id: int, user_id: int) -> bool:
+        """
+        Check if a product has transaction history.
+        
+        Args:
+            product_id: User product ID (user_product_id)
+            user_id: User ID
+        
+        Returns:
+            True if product has history, False otherwise
+        """
+        # Get product to find internal_id
+        product = self.product_model.get_by_id(product_id, user_id)
+        if not product:
+            return False
+        
+        internal_id = product.get('internal_id')
+        if not internal_id:
+            return False
+        
+        return self.product_model.has_history(internal_id)
 

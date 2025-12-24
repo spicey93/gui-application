@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QDialog, QLineEdit, 
     QTabWidget, QMessageBox, QHeaderView, QDateEdit, 
-    QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit, QCompleter
+    QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit, QCompleter, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, QDate, QEvent, QStringListModel
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence, QCloseEvent
@@ -168,7 +168,7 @@ class SuppliersView(BaseTabbedView):
         # Double-click to edit
         self.suppliers_table.itemDoubleClicked.connect(self._on_table_double_click)
         
-        suppliers_layout.addWidget(self.suppliers_table)
+        suppliers_layout.addWidget(self.suppliers_table, stretch=1)
         
         self.add_tab(suppliers_widget, "Suppliers (Ctrl+1)", "Ctrl+1")
         
@@ -270,7 +270,7 @@ class SuppliersView(BaseTabbedView):
         self.invoices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.invoices_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
-        invoices_layout.addWidget(self.invoices_table)
+        invoices_layout.addWidget(self.invoices_table, stretch=1)
         
         self.add_tab(invoices_widget, "Invoices (Ctrl+3)", "Ctrl+3")
         
@@ -296,7 +296,7 @@ class SuppliersView(BaseTabbedView):
         self.payments_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.payments_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
-        payments_layout.addWidget(self.payments_table)
+        payments_layout.addWidget(self.payments_table, stretch=1)
         
         self.add_tab(payments_widget, "Payments (Ctrl+4)", "Ctrl+4")
         
@@ -667,7 +667,7 @@ class SuppliersView(BaseTabbedView):
             invoices_table.selectRow(0)
         
         invoices_table.resizeColumnsToContents()
-        invoices_layout.addWidget(invoices_table)
+        invoices_layout.addWidget(invoices_table, stretch=1)
         notebook.addTab(invoices_frame, "Invoices (Ctrl+2)")
         
         # Payments tab
@@ -690,9 +690,75 @@ class SuppliersView(BaseTabbedView):
         if self.payment_controller:
             payments_list = self.payment_controller.get_payments(supplier_id)
         
+        def refresh_payments_table():
+            """Refresh the payments table with updated data."""
+            if not self.payment_controller:
+                return
+            payments_list = self.payment_controller.get_payments(supplier_id)
+            payments_table.setRowCount(len(payments_list))
+            for row, payment in enumerate(payments_list):
+                payment_id = payment['id']
+                unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
+                allocations = self.payment_controller.get_payment_allocations(payment_id)
+                
+                payments_table.setItem(row, 0, QTableWidgetItem(payment['payment_date']))
+                payments_table.setItem(row, 1, QTableWidgetItem(f"£{payment['amount']:.2f}"))
+                payments_table.setItem(row, 2, QTableWidgetItem(payment.get('payment_method', 'Cash')))
+                payments_table.setItem(row, 3, QTableWidgetItem(payment.get('reference', '')))
+                payments_table.setItem(row, 4, QTableWidgetItem(f"£{unallocated:.2f}"))
+                
+                # Allocations button/view
+                if allocations:
+                    alloc_btn = QPushButton(f"View ({len(allocations)})")
+                    alloc_btn.setMaximumWidth(90)
+                    alloc_btn.clicked.connect(
+                        lambda checked, pay_id=payment_id: 
+                        self._view_payment_allocations_dialog(dialog, supplier_id, pay_id)
+                    )
+                    payments_table.setCellWidget(row, 5, alloc_btn)
+                else:
+                    payments_table.setItem(row, 5, QTableWidgetItem("None"))
+                
+                # Delete button (disabled if allocated)
+                delete_btn = QPushButton("Delete")
+                delete_btn.setMaximumWidth(70)
+                if allocations:
+                    delete_btn.setEnabled(False)
+                    delete_btn.setToolTip("Cannot delete payment with allocations. Unallocate first.")
+                delete_btn.clicked.connect(
+                    lambda checked, pay_id=payment_id, pay_date=payment['payment_date'], pay_amt=payment['amount']: 
+                    self._delete_payment_dialog(dialog, supplier_id, pay_id, pay_date, pay_amt)
+                )
+                payments_table.setCellWidget(row, 6, delete_btn)
+            
+            payments_table.resizeColumnsToContents()
+            # Restore focus and selection using QTimer to ensure dialog is closed
+            from PySide6.QtCore import QTimer
+            def restore_focus():
+                if payments_table.rowCount() > 0:
+                    # Ensure parent dialog is active first
+                    dialog.activateWindow()
+                    dialog.raise_()
+                    # Switch to payments tab if not already there
+                    notebook.setCurrentIndex(2)  # Payments tab index
+                    # Then focus the table
+                    payments_table.setFocus()
+                    payments_table.selectRow(0)
+                    # Make sure the table can receive keyboard events
+                    payments_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                    # Force update to ensure focus is properly set
+                    payments_table.update()
+            QTimer.singleShot(300, restore_focus)
+        
         def handle_payment_enter(row):
+            """Handle Enter key on payment row."""
+            if not self.payment_controller:
+                return
+            # Get fresh payments list to ensure we have current data
+            payments_list = self.payment_controller.get_payments(supplier_id)
             if row < len(payments_list):
-                self._allocate_payment_dialog(dialog, supplier_id, payments_list[row]['id'])
+                # Pass refresh callback to update table after allocation
+                self._allocate_payment_dialog(dialog, supplier_id, payments_list[row]['id'], refresh_payments_table)
         
         payments_table = PaymentsTableWidget(handle_payment_enter)
         payments_table.setColumnCount(7)
@@ -745,7 +811,7 @@ class SuppliersView(BaseTabbedView):
             
             # Double-click to allocate payment
             payments_table.itemDoubleClicked.connect(
-                lambda item: self._allocate_payment_dialog(dialog, supplier_id, payments_list[item.row()]['id'])
+                lambda item: self._allocate_payment_dialog(dialog, supplier_id, payments_list[item.row()]['id'], refresh_payments_table)
             )
         
         # Select first row if available
@@ -753,7 +819,7 @@ class SuppliersView(BaseTabbedView):
             payments_table.selectRow(0)
         
         payments_table.resizeColumnsToContents()
-        payments_layout.addWidget(payments_table)
+        payments_layout.addWidget(payments_table, stretch=1)
         notebook.addTab(payments_frame, "Payments (Ctrl+3)")
         
         # Actions tab
@@ -1318,7 +1384,7 @@ class SuppliersView(BaseTabbedView):
         items_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         items_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         items_table.itemDoubleClicked.connect(lambda item, row=0: edit_invoice_item(item.row()))
-        layout.addWidget(items_table)
+        layout.addWidget(items_table, stretch=1)
         
         # Store invoice items data
         invoice_items_data = []  # List of dicts: {stock_number, description, quantity, unit_price, vat_code}
@@ -1347,8 +1413,109 @@ class SuppliersView(BaseTabbedView):
         subtotal_label.setStyleSheet("font-size: 12px;")
         totals_layout.addWidget(subtotal_label)
         
+        # Store manual VAT override (None means use calculated VAT)
+        manual_vat_override = [None]  # Use list to allow modification in nested functions
+        
         vat_label = QLabel("VAT: £0.00")
-        vat_label.setStyleSheet("font-size: 12px;")
+        vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline;")
+        vat_label.setToolTip("Click to manually edit VAT amount (Advanced)")
+        
+        def handle_vat_label_click():
+            """Handle click on VAT label to edit VAT manually."""
+            # Show confirmation dialog
+            reply = QMessageBox.question(
+                dialog,
+                "Edit VAT",
+                "Editing VAT is an advanced function. Are you sure you want to manually override the calculated VAT amount?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # Show dialog to enter new VAT amount
+                edit_dialog = QDialog(dialog)
+                edit_dialog.setWindowTitle("Edit VAT Amount")
+                edit_dialog.setModal(True)
+                edit_dialog.setMinimumWidth(300)
+                apply_theme(edit_dialog)
+                
+                edit_layout = QVBoxLayout(edit_dialog)
+                edit_layout.setSpacing(15)
+                edit_layout.setContentsMargins(30, 30, 30, 30)
+                
+                # Current VAT info
+                current_calculated = sum(
+                    item['quantity'] * item['unit_price'] * 
+                    ({'S': 20.0, 'E': 0.0, 'Z': 0.0}.get(item.get('vat_code', 'S').strip().upper(), 20.0) / 100.0)
+                    for item in invoice_items_data
+                )
+                current_display = manual_vat_override[0] if manual_vat_override[0] is not None else current_calculated
+                
+                info_label = QLabel(f"Current VAT: £{current_display:.2f}\nCalculated VAT: £{current_calculated:.2f}")
+                info_label.setStyleSheet("font-size: 11px;")
+                edit_layout.addWidget(info_label)
+                
+                # VAT amount input
+                vat_input_layout = QHBoxLayout()
+                vat_input_label = QLabel("VAT Amount (£):")
+                vat_input_label.setMinimumWidth(120)
+                vat_input_layout.addWidget(vat_input_label)
+                vat_input = QDoubleSpinBox()
+                vat_input.setMinimum(0.0)
+                vat_input.setMaximum(999999.99)
+                vat_input.setDecimals(2)
+                vat_input.setValue(current_display)
+                vat_input.setPrefix("£")
+                vat_input.setStyleSheet("font-size: 12px;")
+                vat_input_layout.addWidget(vat_input, stretch=1)
+                edit_layout.addLayout(vat_input_layout)
+                
+                # Buttons
+                button_layout = QHBoxLayout()
+                button_layout.addStretch()
+                
+                def handle_save_vat():
+                    """Save the manual VAT override."""
+                    manual_vat_override[0] = vat_input.value()
+                    update_totals()
+                    edit_dialog.accept()
+                
+                def handle_reset_vat():
+                    """Reset to calculated VAT."""
+                    manual_vat_override[0] = None
+                    update_totals()
+                    edit_dialog.accept()
+                
+                save_btn = QPushButton("Save")
+                save_btn.setMinimumWidth(100)
+                save_btn.clicked.connect(handle_save_vat)
+                button_layout.addWidget(save_btn)
+                
+                reset_btn = QPushButton("Reset to Calculated")
+                reset_btn.setMinimumWidth(150)
+                reset_btn.clicked.connect(handle_reset_vat)
+                button_layout.addWidget(reset_btn)
+                
+                cancel_btn = QPushButton("Cancel")
+                cancel_btn.setMinimumWidth(100)
+                cancel_btn.clicked.connect(edit_dialog.reject)
+                button_layout.addWidget(cancel_btn)
+                
+                edit_layout.addLayout(button_layout)
+                
+                # Set focus to input and select all
+                vat_input.setFocus()
+                vat_input.selectAll()
+                
+                # Enter key to save
+                from PySide6.QtGui import QShortcut, QKeySequence
+                enter_shortcut = QShortcut(QKeySequence("Return"), edit_dialog)
+                enter_shortcut.activated.connect(handle_save_vat)
+                
+                edit_dialog.exec()
+        
+        # Make VAT label clickable
+        vat_label.mousePressEvent = lambda event: handle_vat_label_click()
         totals_layout.addWidget(vat_label)
         
         total_label = QLabel("Total: £0.00")
@@ -1375,22 +1542,35 @@ class SuppliersView(BaseTabbedView):
             subtotal = 0.0
             vat_amount = 0.0
             
-            # VAT rates by code: S=Standard (20%), E=Exempt (0%), Z=Zero (0%)
-            vat_rates = {'S': 20.0, 'E': 0.0, 'Z': 0.0}
-            
+            # Calculate subtotal
             for item in invoice_items_data:
                 line_total = item['quantity'] * item['unit_price']
                 subtotal += line_total
+            
+            # Use manual VAT override if set, otherwise calculate from items
+            if manual_vat_override[0] is not None:
+                vat_amount = manual_vat_override[0]
+            else:
+                # VAT rates by code: S=Standard (20%), E=Exempt (0%), Z=Zero (0%)
+                vat_rates = {'S': 20.0, 'E': 0.0, 'Z': 0.0}
                 
-                vat_code = item.get('vat_code', 'S').strip().upper()
-                vat_rate = vat_rates.get(vat_code, 20.0)
-                line_vat = line_total * (vat_rate / 100.0)
-                vat_amount += line_vat
+                for item in invoice_items_data:
+                    line_total = item['quantity'] * item['unit_price']
+                    vat_code = item.get('vat_code', 'S').strip().upper()
+                    vat_rate = vat_rates.get(vat_code, 20.0)
+                    line_vat = line_total * (vat_rate / 100.0)
+                    vat_amount += line_vat
             
             total = subtotal + vat_amount
             
             subtotal_label.setText(f"Subtotal: £{subtotal:.2f}")
-            vat_label.setText(f"VAT: £{vat_amount:.2f}")
+            # Show indicator if VAT is manually overridden
+            if manual_vat_override[0] is not None:
+                vat_label.setText(f"VAT: £{vat_amount:.2f} (Manual)")
+                vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline; color: #c00000;")
+            else:
+                vat_label.setText(f"VAT: £{vat_amount:.2f}")
+                vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline;")
             total_label.setText(f"Total: £{total:.2f}")
         
         def edit_invoice_item(row):
@@ -1452,8 +1632,32 @@ class SuppliersView(BaseTabbedView):
             
             QMessageBox.information(dialog, "Success", "Invoice created successfully")
             dialog.accept()
-            if parent_dialog is not None:
-                parent_dialog.accept()  # Close parent dialog to refresh
+            
+            # Navigate back to suppliers page and select the supplier
+            def navigate_to_supplier():
+                """Navigate back to suppliers page and select the supplier."""
+                if parent_dialog is not None:
+                    parent_dialog.accept()  # Close parent dialog
+                
+                # Emit signal to navigate to suppliers view
+                self.suppliers_requested.emit()
+                
+                # Refresh suppliers view
+                self.refresh_requested.emit()
+                
+                # Use QTimer to ensure refresh completes before selecting
+                from PySide6.QtCore import QTimer
+                def select_supplier():
+                    # Find and select the supplier in the table
+                    for row in range(self.suppliers_table.rowCount()):
+                        item = self.suppliers_table.item(row, 0)
+                        if item and int(item.text()) == selected_supplier_id:
+                            self.suppliers_table.selectRow(row)
+                            self._on_supplier_selection_changed()
+                            break
+                QTimer.singleShot(200, select_supplier)
+            
+            navigate_to_supplier()
             
         save_btn = QPushButton("Save (Ctrl+Enter)")
         save_btn.setDefault(True)
@@ -1648,7 +1852,7 @@ class SuppliersView(BaseTabbedView):
         products_table.setAlternatingRowColors(True)
         products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         products_table.setMinimumHeight(300)
-        products_layout.addWidget(products_table)
+        products_layout.addWidget(products_table, stretch=1)
         
         # Store filtered products for Enter key (includes both products and catalogue tyres)
         filtered_products_list = []
@@ -1817,26 +2021,14 @@ class SuppliersView(BaseTabbedView):
             cost_layout.addWidget(cost_spin, stretch=1)
             layout.addLayout(cost_layout)
             
-            # VAT Code
-            vat_layout = QHBoxLayout()
-            vat_label = QLabel("VAT Code:")
-            vat_label.setMinimumWidth(100)
-            vat_layout.addWidget(vat_label)
-            vat_combo = QComboBox()
-            vat_combo.addItems(['S', 'E', 'Z'])
-            vat_combo.setCurrentText('S')
-            vat_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-            vat_layout.addWidget(vat_combo, stretch=1)
-            layout.addLayout(vat_layout)
-            
             # Quantity
             qty_layout = QHBoxLayout()
             qty_label = QLabel("Quantity:")
             qty_label.setMinimumWidth(100)
             qty_layout.addWidget(qty_label)
-            qty_spin = QDoubleSpinBox()
-            qty_spin.setRange(0.01, 999999)
-            qty_spin.setValue(1.0)
+            qty_spin = QSpinBox()
+            qty_spin.setRange(1, 999999)
+            qty_spin.setValue(1)
             qty_spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             qty_layout.addWidget(qty_spin, stretch=1)
             layout.addLayout(qty_layout)
@@ -1848,7 +2040,7 @@ class SuppliersView(BaseTabbedView):
             def handle_add():
                 """Add product with entered values."""
                 unit_price = cost_spin.value()
-                vat_code = vat_combo.currentText()
+                vat_code = 'S'  # Default VAT code
                 quantity = qty_spin.value()
                 
                 if quantity <= 0:
@@ -1964,7 +2156,7 @@ class SuppliersView(BaseTabbedView):
         basket_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         basket_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         basket_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
-        main_layout.addWidget(basket_table)
+        main_layout.addWidget(basket_table, stretch=1)
         
         # Basket data storage
         basket_items = []  # List of dicts: {product_id, stock_number, description, quantity, unit_price, vat_code}
@@ -2312,6 +2504,12 @@ class SuppliersView(BaseTabbedView):
             allocations_table.setColumnCount(4)
             allocations_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Amount Allocated", "Unallocate"])
             allocations_table.horizontalHeader().setStretchLastSection(False)
+            # Set column resize modes to ensure table fills width
+            header = allocations_table.horizontalHeader()
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
             allocations_table.setColumnWidth(3, 100)
             allocations_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
             allocations_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -2340,7 +2538,7 @@ class SuppliersView(BaseTabbedView):
                 )
                 allocations_table.setCellWidget(row, 3, unalloc_btn)
             
-            layout.addWidget(allocations_table)
+            layout.addWidget(allocations_table, stretch=1)
         
         # Close button
         button_layout = QHBoxLayout()
@@ -2515,10 +2713,13 @@ class SuppliersView(BaseTabbedView):
         items_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         items_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         items_table.itemDoubleClicked.connect(lambda item, row=0: edit_invoice_item(item.row()))
-        layout.addWidget(items_table)
+        layout.addWidget(items_table, stretch=1)
         
         # Store invoice items data
         invoice_items_data = []
+        
+        # Store manual VAT override (None means use calculated VAT)
+        manual_vat_override = [None]  # Use list to allow modification in nested functions
         
         # Load existing items into invoice_items_data
         for item in invoice_items:
@@ -2550,22 +2751,33 @@ class SuppliersView(BaseTabbedView):
             subtotal = 0.0
             vat_amount = 0.0
             
-            # VAT rates by code: S=Standard (20%), E=Exempt (0%), Z=Zero (0%)
-            vat_rates = {'S': 20.0, 'E': 0.0, 'Z': 0.0}
-            
+            # Calculate subtotal
             for item in invoice_items_data:
                 line_total = item['quantity'] * item['unit_price']
                 subtotal += line_total
+            
+            # Use manual VAT override if set, otherwise calculate from items
+            if manual_vat_override[0] is not None:
+                vat_amount = manual_vat_override[0]
+            else:
+                # VAT rates by code: S=Standard (20%), E=Exempt (0%), Z=Zero (0%)
+                vat_rates = {'S': 20.0, 'E': 0.0, 'Z': 0.0}
                 
-                vat_code = item.get('vat_code', 'S').strip().upper()
-                vat_rate = vat_rates.get(vat_code, 20.0)
-                line_vat = line_total * (vat_rate / 100.0)
-                vat_amount += line_vat
+                for item in invoice_items_data:
+                    line_total = item['quantity'] * item['unit_price']
+                    vat_code = item.get('vat_code', 'S').strip().upper()
+                    vat_rate = vat_rates.get(vat_code, 20.0)
+                    line_vat = line_total * (vat_rate / 100.0)
+                    vat_amount += line_vat
             
             total = subtotal + vat_amount
             
             subtotal_label.setText(f"Subtotal: £{subtotal:.2f}")
-            vat_label.setText(f"VAT: £{vat_amount:.2f}")
+            # Show indicator if VAT is manually overridden
+            if manual_vat_override[0] is not None:
+                vat_label.setText(f"VAT: £{vat_amount:.2f} (Manual)")
+            else:
+                vat_label.setText(f"VAT: £{vat_amount:.2f}")
             total_label.setText(f"Total: £{total:.2f}")
         
         def edit_invoice_item(row):
@@ -2614,7 +2826,105 @@ class SuppliersView(BaseTabbedView):
         totals_layout.addWidget(subtotal_label)
         
         vat_label = QLabel("VAT: £0.00")
-        vat_label.setStyleSheet("font-size: 12px;")
+        vat_label.setStyleSheet("font-size: 12px; cursor: pointer; text-decoration: underline;")
+        vat_label.setToolTip("Click to manually edit VAT amount (Advanced)")
+        
+        def handle_vat_label_click():
+            """Handle click on VAT label to edit VAT manually."""
+            # Show confirmation dialog
+            reply = QMessageBox.question(
+                dialog,
+                "Edit VAT",
+                "Editing VAT is an advanced function. Are you sure you want to manually override the calculated VAT amount?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                # Show dialog to enter new VAT amount
+                edit_dialog = QDialog(dialog)
+                edit_dialog.setWindowTitle("Edit VAT Amount")
+                edit_dialog.setModal(True)
+                edit_dialog.setMinimumWidth(300)
+                apply_theme(edit_dialog)
+                
+                edit_layout = QVBoxLayout(edit_dialog)
+                edit_layout.setSpacing(15)
+                edit_layout.setContentsMargins(30, 30, 30, 30)
+                
+                # Current VAT info
+                current_calculated = sum(
+                    item['quantity'] * item['unit_price'] * 
+                    ({'S': 20.0, 'E': 0.0, 'Z': 0.0}.get(item.get('vat_code', 'S').strip().upper(), 20.0) / 100.0)
+                    for item in invoice_items_data
+                )
+                current_display = manual_vat_override[0] if manual_vat_override[0] is not None else current_calculated
+                
+                info_label = QLabel(f"Current VAT: £{current_display:.2f}\nCalculated VAT: £{current_calculated:.2f}")
+                info_label.setStyleSheet("font-size: 11px;")
+                edit_layout.addWidget(info_label)
+                
+                # VAT amount input
+                vat_input_layout = QHBoxLayout()
+                vat_input_label = QLabel("VAT Amount (£):")
+                vat_input_label.setMinimumWidth(120)
+                vat_input_layout.addWidget(vat_input_label)
+                vat_input = QDoubleSpinBox()
+                vat_input.setMinimum(0.0)
+                vat_input.setMaximum(999999.99)
+                vat_input.setDecimals(2)
+                vat_input.setValue(current_display)
+                vat_input.setPrefix("£")
+                vat_input.setStyleSheet("font-size: 12px;")
+                vat_input_layout.addWidget(vat_input, stretch=1)
+                edit_layout.addLayout(vat_input_layout)
+                
+                # Buttons
+                button_layout = QHBoxLayout()
+                button_layout.addStretch()
+                
+                def handle_save_vat():
+                    """Save the manual VAT override."""
+                    manual_vat_override[0] = vat_input.value()
+                    update_totals()
+                    edit_dialog.accept()
+                
+                def handle_reset_vat():
+                    """Reset to calculated VAT."""
+                    manual_vat_override[0] = None
+                    update_totals()
+                    edit_dialog.accept()
+                
+                save_btn = QPushButton("Save")
+                save_btn.setMinimumWidth(100)
+                save_btn.clicked.connect(handle_save_vat)
+                button_layout.addWidget(save_btn)
+                
+                reset_btn = QPushButton("Reset to Calculated")
+                reset_btn.setMinimumWidth(150)
+                reset_btn.clicked.connect(handle_reset_vat)
+                button_layout.addWidget(reset_btn)
+                
+                cancel_btn = QPushButton("Cancel")
+                cancel_btn.setMinimumWidth(100)
+                cancel_btn.clicked.connect(edit_dialog.reject)
+                button_layout.addWidget(cancel_btn)
+                
+                edit_layout.addLayout(button_layout)
+                
+                # Set focus to input and select all
+                vat_input.setFocus()
+                vat_input.selectAll()
+                
+                # Enter key to save
+                from PySide6.QtGui import QShortcut, QKeySequence
+                enter_shortcut = QShortcut(QKeySequence("Return"), edit_dialog)
+                enter_shortcut.activated.connect(handle_save_vat)
+                
+                edit_dialog.exec()
+        
+        # Make VAT label clickable
+        vat_label.mousePressEvent = lambda e: handle_vat_label_click()
         totals_layout.addWidget(vat_label)
         
         total_label = QLabel("Total: £0.00")
@@ -2684,7 +2994,7 @@ class SuppliersView(BaseTabbedView):
                     allocations_table.setItem(row, 2, QTableWidgetItem("N/A"))
             
             allocations_table.resizeColumnsToContents()
-            layout.addWidget(allocations_table)
+            layout.addWidget(allocations_table, stretch=1)
         
         # Initial table update
         update_invoice_table()
@@ -2763,6 +3073,9 @@ class SuppliersView(BaseTabbedView):
                         invoice_id, product_id, stock_num, desc, qty, price, vat_code
                     )
             
+            # Calculate subtotal for manual VAT override
+            subtotal = sum(item['quantity'] * item['unit_price'] for item in invoice_items_data)
+            
             # Update invoice (supplier change not supported in update method, so skip for now)
             success, message = self.invoice_controller.update_invoice(
                 invoice_id, inv_num_entry.text().strip(), invoice_date, vat_rate, invoice.get('status', 'pending')
@@ -2771,6 +3084,16 @@ class SuppliersView(BaseTabbedView):
             if not success:
                 QMessageBox.critical(dialog, "Error", message)
                 return
+            
+            # If manual VAT override is set, update totals directly instead of recalculating
+            if manual_vat_override[0] is not None:
+                manual_vat_amount = manual_vat_override[0]
+                total = subtotal + manual_vat_amount
+                # Update invoice totals directly
+                self.invoice_controller.update_invoice_totals(invoice_id, subtotal, manual_vat_amount, total)
+            else:
+                # Recalculate totals normally
+                self.invoice_controller.recalculate_invoice_totals(invoice_id)
             
             QMessageBox.information(dialog, "Success", "Invoice updated successfully")
             dialog.accept()
@@ -2979,44 +3302,57 @@ class SuppliersView(BaseTabbedView):
             
             dialog.accept()
             
-            # Check if supplier has outstanding invoices and show allocation dialog
+            # Helper function to navigate back to suppliers and select the supplier
+            def navigate_to_supplier():
+                """Navigate back to suppliers page and select the supplier."""
+                if parent_dialog is not None:
+                    parent_dialog.accept()  # Close supplier details dialog
+                
+                # Emit signal to navigate to suppliers view
+                self.suppliers_requested.emit()
+                
+                # Refresh suppliers and select the supplier
+                self.refresh_requested.emit()
+                
+                # Use QTimer to ensure refresh completes before selecting
+                from PySide6.QtCore import QTimer
+                def select_supplier():
+                    # Find and select the supplier in the table
+                    for row in range(self.suppliers_table.rowCount()):
+                        item = self.suppliers_table.item(row, 0)
+                        if item and int(item.text()) == supplier_id:
+                            self.suppliers_table.selectRow(row)
+                            self._on_supplier_selection_changed()
+                            break
+                QTimer.singleShot(200, select_supplier)
+            
+            # Check if supplier has outstanding invoices and ask if user wants to allocate
             outstanding_invoices = self.payment_controller.get_outstanding_invoices(supplier_id)
             if outstanding_invoices and payment_id:
-                # Show allocation dialog (it will handle closing parent_dialog on success)
-                # Pass a callback to close parent dialog and refresh main view
-                def allocation_callback():
-                    if parent_dialog is not None:
-                        parent_dialog.accept()  # Close supplier details dialog
-                    # Refresh main view and ensure supplier is selected
-                    self.refresh_requested.emit()
-                    # Select the supplier in the main view if not already selected
-                    if self.selected_supplier_id != supplier_id:
-                        # Find and select the supplier in the table
-                        for row in range(self.suppliers_table.rowCount()):
-                            item = self.suppliers_table.item(row, 0)
-                            if item and item.data(Qt.ItemDataRole.UserRole) == supplier_id:
-                                self.suppliers_table.selectRow(row)
-                                self._on_supplier_selection_changed()
-                                break
-                self._allocate_payment_dialog(parent_dialog, supplier_id, payment_id, allocation_callback)
-            else:
-                # No outstanding invoices, show success and close parent to refresh
-                if parent_dialog is not None:
-                    QMessageBox.information(parent_dialog, "Success", "Payment created successfully")
-                    parent_dialog.accept()  # Close supplier details dialog
-                    # Refresh main view and ensure supplier is selected
-                    self.refresh_requested.emit()
-                    # Select the supplier in the main view if not already selected
-                    if self.selected_supplier_id != supplier_id:
-                        # Find and select the supplier in the table
-                        for row in range(self.suppliers_table.rowCount()):
-                            item = self.suppliers_table.item(row, 0)
-                            if item and item.data(Qt.ItemDataRole.UserRole) == supplier_id:
-                                self.suppliers_table.selectRow(row)
-                                self._on_supplier_selection_changed()
-                                break
+                # Ask user if they want to allocate the payment
+                reply = QMessageBox.question(
+                    dialog,
+                    "Allocate Payment?",
+                    f"Payment created successfully.\n\n"
+                    f"This supplier has {len(outstanding_invoices)} outstanding invoice(s).\n"
+                    f"Would you like to allocate this payment to invoices now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+                
+                if reply == QMessageBox.StandardButton.Yes:
+                    # Show allocation dialog
+                    def allocation_callback():
+                        navigate_to_supplier()
+                    self._allocate_payment_dialog(parent_dialog, supplier_id, payment_id, allocation_callback)
                 else:
-                    QMessageBox.information(self, "Success", "Payment created successfully")
+                    # User chose not to allocate, just navigate back
+                    QMessageBox.information(dialog, "Success", "Payment created successfully. You can allocate it later.")
+                    navigate_to_supplier()
+            else:
+                # No outstanding invoices, show success and navigate back
+                QMessageBox.information(dialog, "Success", "Payment created successfully")
+                navigate_to_supplier()
         
         save_btn = QPushButton("Save (Ctrl+Enter)")
         save_btn.setDefault(True)
@@ -3083,6 +3419,12 @@ class SuppliersView(BaseTabbedView):
             allocations_table.setColumnCount(4)
             allocations_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Amount Allocated", "Unallocate"])
             allocations_table.horizontalHeader().setStretchLastSection(False)
+            # Set column resize modes to ensure table fills width
+            header = allocations_table.horizontalHeader()
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
             allocations_table.setColumnWidth(3, 100)
             allocations_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
             allocations_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -3113,7 +3455,7 @@ class SuppliersView(BaseTabbedView):
                 )
                 allocations_table.setCellWidget(row, 3, unalloc_btn)
             
-            layout.addWidget(allocations_table)
+            layout.addWidget(allocations_table, stretch=1)
             
             separator = QLabel("─" * 50)
             separator.setStyleSheet("color: #999;")
@@ -3123,54 +3465,242 @@ class SuppliersView(BaseTabbedView):
         invoices = self.payment_controller.get_outstanding_invoices(supplier_id)
         
         invoices_table = QTableWidget()
-        invoices_table.setColumnCount(4)
-        invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Outstanding", "Allocate"])
+        invoices_table.setColumnCount(5)
+        invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Outstanding", "Amount to Allocate", ""])
         invoices_table.horizontalHeader().setStretchLastSection(True)
+        header = invoices_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        invoices_table.setColumnWidth(4, 100)  # "Fill" button column
         invoices_table.setAlternatingRowColors(True)
         invoices_table.setRowCount(len(invoices))
+        invoices_table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.SelectedClicked)
         
-        allocation_entries = []
-        for row, invoice in enumerate(invoices):
-            invoices_table.setItem(row, 0, QTableWidgetItem(invoice['invoice_number']))
-            invoices_table.setItem(row, 1, QTableWidgetItem(invoice['invoice_date']))
-            invoices_table.setItem(row, 2, QTableWidgetItem(f"£{invoice['outstanding_balance']:.2f}"))
+        invoice_data = []
+        allocation_spinboxes = []
+        
+        # Create summary label first (needed by update function)
+        summary_label = QLabel("")
+        summary_label.setStyleSheet("font-size: 11px; padding: 10px; background-color: #f0f0f0; border-radius: 5px;")
+        summary_label.setWordWrap(True)
+        
+        # Define update function (needed before connecting signals)
+        def update_allocation_summary():
+            """Update the allocation summary label."""
+            total_allocated = 0.0
+            allocated_invoices = []
+            for i, spinbox in enumerate(allocation_spinboxes):
+                amount = spinbox.value()
+                if amount > 0:
+                    total_allocated += amount
+                    allocated_invoices.append({
+                        'invoice': invoice_data[i],
+                        'amount': amount
+                    })
             
-            # Allocation amount entry
-            alloc_entry = QDoubleSpinBox()
-            alloc_entry.setRange(0, min(unallocated, invoice['outstanding_balance']))
-            alloc_entry.setPrefix("£")
-            alloc_entry.setValue(0.0)
-            allocation_entries.append((invoice['id'], alloc_entry))
-            invoices_table.setCellWidget(row, 3, alloc_entry)
+            remaining = unallocated - total_allocated
+            if remaining < -0.01:  # More than unallocated (with small tolerance)
+                summary_text = f"<b>Total Allocated: £{total_allocated:.2f}</b><br>"
+                summary_text += f"<span style='color: red;'>Exceeds unallocated by £{abs(remaining):.2f}</span>"
+            elif remaining > 0.01:
+                summary_text = f"<b>Total Allocated: £{total_allocated:.2f}</b><br>"
+                summary_text += f"<span style='color: orange;'>Remaining: £{remaining:.2f} unallocated</span>"
+            elif abs(remaining) <= 0.01:  # Close to zero
+                summary_text = f"<b>Total Allocated: £{total_allocated:.2f}</b><br>"
+                summary_text += f"<span style='color: green;'>Perfect match!</span>"
+            else:
+                summary_text = f"<b>Total Allocated: £{total_allocated:.2f}</b><br>"
+                summary_text += f"<span style='color: gray;'>Remaining: £{unallocated:.2f}</span>"
+            
+            summary_label.setText(summary_text)
         
-        layout.addWidget(invoices_table)
+        # Now create the table rows with spinboxes
+        for row, invoice in enumerate(invoices):
+            invoice_data.append({
+                'id': invoice['id'],
+                'invoice_number': invoice['invoice_number'],
+                'invoice_date': invoice['invoice_date'],
+                'outstanding': invoice['outstanding_balance']
+            })
+            
+            # Invoice number (read-only)
+            invoice_num_item = QTableWidgetItem(invoice['invoice_number'])
+            invoice_num_item.setFlags(invoice_num_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            invoices_table.setItem(row, 0, invoice_num_item)
+            
+            # Date (read-only)
+            date_item = QTableWidgetItem(invoice['invoice_date'])
+            date_item.setFlags(date_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            invoices_table.setItem(row, 1, date_item)
+            
+            # Outstanding (read-only)
+            outstanding_item = QTableWidgetItem(f"£{invoice['outstanding_balance']:.2f}")
+            outstanding_item.setFlags(outstanding_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            invoices_table.setItem(row, 2, outstanding_item)
+            
+            # Amount to allocate (editable spinbox)
+            amount_spinbox = QDoubleSpinBox()
+            amount_spinbox.setMinimum(0.0)
+            amount_spinbox.setMaximum(invoice['outstanding_balance'])
+            amount_spinbox.setDecimals(2)
+            amount_spinbox.setPrefix("£")
+            amount_spinbox.setValue(0.0)
+            amount_spinbox.setSingleStep(0.01)
+            amount_spinbox.valueChanged.connect(update_allocation_summary)
+            allocation_spinboxes.append(amount_spinbox)
+            invoices_table.setCellWidget(row, 3, amount_spinbox)
+            
+            # "Fill" button to set amount to outstanding balance
+            fill_btn = QPushButton("Fill")
+            fill_btn.setMaximumWidth(90)
+            fill_btn.clicked.connect(
+                lambda checked, sb=amount_spinbox, outstanding=invoice['outstanding_balance']: sb.setValue(outstanding)
+            )
+            invoices_table.setCellWidget(row, 4, fill_btn)
+        
+        layout.addWidget(invoices_table, stretch=1)
+        
+        # Initialize and add summary label
+        update_allocation_summary()
+        layout.addWidget(summary_label)
+        
         layout.addStretch()
         
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         
-        def handle_allocate():
-            total_allocated = sum(entry.value() for _, entry in allocation_entries)
-            if total_allocated > unallocated:
-                QMessageBox.warning(dialog, "Error", f"Total allocation (£{total_allocated:.2f}) exceeds unallocated amount (£{unallocated:.2f})")
+        def suggest_allocation():
+            """Suggest invoice allocations that match the payment amount."""
+            # Clear all spinboxes first
+            for spinbox in allocation_spinboxes:
+                spinbox.setValue(0.0)
+            
+            # Try to find a combination that matches exactly
+            def find_exact_match(target, available, selected_indices, start_idx):
+                """Find exact match using backtracking."""
+                if abs(target) < 0.01:  # Close enough to zero (floating point)
+                    return True
+                if target < 0 or start_idx >= len(available):
+                    return False
+                
+                # Try including current invoice
+                selected_indices.append(start_idx)
+                if find_exact_match(target - available[start_idx]['outstanding'], available, selected_indices, start_idx + 1):
+                    return True
+                selected_indices.pop()
+                
+                # Try excluding current invoice
+                return find_exact_match(target, available, selected_indices, start_idx + 1)
+            
+            # Try exact match first
+            selected_indices = []
+            if find_exact_match(unallocated, invoice_data, selected_indices, 0):
+                for idx in selected_indices:
+                    allocation_spinboxes[idx].setValue(invoice_data[idx]['outstanding'])
+                update_allocation_summary()
                 return
             
-            for invoice_id, entry in allocation_entries:
-                if entry.value() > 0:
-                    success, message, _ = self.payment_controller.allocate_payment(
-                        payment_id, invoice_id, entry.value()
-                    )
-                    if not success:
-                        QMessageBox.critical(dialog, "Error", message)
-                        return
+            # If no exact match, use greedy approach: allocate to invoices that fit
+            remaining = unallocated
+            for i, invoice in enumerate(invoice_data):
+                if invoice['outstanding'] <= remaining:
+                    allocation_spinboxes[i].setValue(invoice['outstanding'])
+                    remaining -= invoice['outstanding']
+                    if remaining < 0.01:  # Close enough
+                        break
+                elif remaining > 0.01:
+                    # Partial allocation to this invoice
+                    allocation_spinboxes[i].setValue(remaining)
+                    remaining = 0.0
+                    break
             
+            update_allocation_summary()
+        
+        suggest_btn = QPushButton("Suggest")
+        suggest_btn.clicked.connect(suggest_allocation)
+        button_layout.addWidget(suggest_btn)
+        
+        def handle_allocate():
+            """Handle payment allocation with custom amounts."""
+            allocations_to_process = []
+            total_allocated = 0.0
+            
+            # Collect all non-zero allocations
+            for i, spinbox in enumerate(allocation_spinboxes):
+                amount = spinbox.value()
+                if amount > 0:
+                    invoice = invoice_data[i]
+                    # Validate amount doesn't exceed outstanding balance
+                    if amount > invoice['outstanding']:
+                        QMessageBox.warning(
+                            dialog, 
+                            "Error", 
+                            f"Allocation amount (£{amount:.2f}) for invoice {invoice['invoice_number']} "
+                            f"exceeds outstanding balance (£{invoice['outstanding']:.2f})"
+                        )
+                        return
+                    allocations_to_process.append({
+                        'invoice_id': invoice['id'],
+                        'invoice_number': invoice['invoice_number'],
+                        'amount': amount
+                    })
+                    total_allocated += amount
+            
+            if not allocations_to_process:
+                QMessageBox.warning(dialog, "Error", "Please enter at least one allocation amount")
+                return
+            
+            # Validate total doesn't exceed unallocated payment amount
+            if total_allocated > unallocated + 0.01:  # Small tolerance for floating point
+                QMessageBox.warning(
+                    dialog, 
+                    "Error", 
+                    f"Total allocation amount (£{total_allocated:.2f}) exceeds unallocated payment amount (£{unallocated:.2f})"
+                )
+                return
+            
+            # Process allocations
+            for allocation in allocations_to_process:
+                success, message, _ = self.payment_controller.allocate_payment(
+                    payment_id, allocation['invoice_id'], allocation['amount']
+                )
+                if not success:
+                    QMessageBox.critical(dialog, "Error", message)
+                    return
+            
+            # Show success message first (while dialog is still open)
             QMessageBox.information(dialog, "Success", "Payment allocated successfully")
+            # Close dialog after message box is dismissed
             dialog.accept()
+            # Use QTimer to ensure dialog is fully closed before calling callback
+            from PySide6.QtCore import QTimer
             if on_success_callback:
-                on_success_callback()
+                QTimer.singleShot(100, on_success_callback)
             elif parent_dialog is not None:
+                # Navigate back to suppliers and select supplier
                 parent_dialog.accept()
+                # Helper to navigate and select supplier
+                def navigate_to_supplier():
+                    """Navigate back to suppliers page and select the supplier."""
+                    # Emit signal to navigate to suppliers view
+                    self.suppliers_requested.emit()
+                    # Refresh suppliers
+                    self.refresh_requested.emit()
+                    # Use QTimer to ensure refresh completes before selecting
+                    def select_supplier():
+                        # Find and select the supplier in the table
+                        for row in range(self.suppliers_table.rowCount()):
+                            item = self.suppliers_table.item(row, 0)
+                            if item and int(item.text()) == supplier_id:
+                                self.suppliers_table.selectRow(row)
+                                self._on_supplier_selection_changed()
+                                break
+                    QTimer.singleShot(200, select_supplier)
+                QTimer.singleShot(150, navigate_to_supplier)
         
         def handle_delete():
             """Handle delete payment button."""

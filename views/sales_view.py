@@ -407,7 +407,7 @@ class SalesView(BaseTabbedView):
         self.documents_table.itemSelectionChanged.connect(self._on_document_selection_changed)
         self.documents_table.itemDoubleClicked.connect(self._switch_to_details_tab)
         
-        documents_layout.addWidget(self.documents_table)
+        documents_layout.addWidget(self.documents_table, stretch=1)
         self.add_tab(documents_widget, "Documents (Ctrl+1)", "Ctrl+1")
     
     def _create_document_details_tab(self) -> None:
@@ -470,7 +470,7 @@ class SalesView(BaseTabbedView):
         items_actions_layout.addStretch()
         
         details_layout.addLayout(items_actions_layout)
-        details_layout.addWidget(self.items_table)
+        details_layout.addWidget(self.items_table, stretch=1)
         
         # Totals section
         totals_layout = QHBoxLayout()

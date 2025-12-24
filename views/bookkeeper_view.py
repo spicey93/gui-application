@@ -102,7 +102,7 @@ class BookkeeperView(BaseTabbedView):
         # Double-click to edit
         self.accounts_table.itemDoubleClicked.connect(self._on_table_double_click)
         
-        accounts_layout.addWidget(self.accounts_table)
+        accounts_layout.addWidget(self.accounts_table, stretch=1)
         
         self.add_tab(accounts_widget, "Chart of Accounts (Ctrl+1)", "Ctrl+1")
         
@@ -129,7 +129,7 @@ class BookkeeperView(BaseTabbedView):
         activity_header.resizeSection(3, 100)
         activity_header.resizeSection(4, 100)
         
-        activity_layout.addWidget(self.activity_table)
+        activity_layout.addWidget(self.activity_table, stretch=1)
         
         self.add_tab(activity_widget, "Account Activity (Ctrl+2)", "Ctrl+2")
         

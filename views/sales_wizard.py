@@ -184,7 +184,7 @@ class SalesWizardDialog(QDialog):
         self.items_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.items_table.setAlternatingRowColors(True)
         self.items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.items_table)
+        layout.addWidget(self.items_table, stretch=1)
         
         # Action buttons
         actions_layout = QHBoxLayout()

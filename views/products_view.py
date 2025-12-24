@@ -37,12 +37,14 @@ class ProductsView(BaseTabbedView):
     create_requested = Signal(str, str, str)
     create_tyre_requested = Signal(str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str)  # All tyre fields
     update_requested = Signal(int, str, str, str)
-    update_tyre_requested = Signal(int, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str)  # All tyre fields
+    update_tyre_requested = Signal(int, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str)  # All tyre fields including noise
     delete_requested = Signal(int)
     refresh_requested = Signal()
     add_product_type_requested = Signal(str)  # Signal for adding product type
     catalogue_requested = Signal()  # Signal for opening tyre catalogue
     get_product_details_requested = Signal(int)  # Request full product details
+    stock_audit_requested = Signal(int)  # Request stock audit for a product
+    check_product_history_requested = Signal(int)  # Check if product has history
     
     def __init__(self):
         """Initialize the products view."""
@@ -69,8 +71,20 @@ class ProductsView(BaseTabbedView):
             None  # Shortcut handled globally in main.py
         )
         
-        # Get content layout to add widgets directly (no tabs needed)
-        content_layout = self.get_content_layout()
+        # Create tabs widget
+        self.tab_widget = self.create_tabs()
+        
+        # Connect tab change signal to update stock audit when tab is selected
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+        
+        # Track selected product for stock audit tab
+        self.selected_product_id: Optional[int] = None
+        
+        # Tab 1: Products
+        products_widget = QWidget()
+        products_layout = QVBoxLayout(products_widget)
+        products_layout.setSpacing(20)
+        products_layout.setContentsMargins(0, 0, 0, 0)
         
         # Products table
         self.products_table = ProductsTableWidget(self._open_selected_product)
@@ -93,10 +107,50 @@ class ProductsView(BaseTabbedView):
         # Enable keyboard navigation
         self.products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
+        # Selection changed - update selected product
+        self.products_table.itemSelectionChanged.connect(self._on_product_selection_changed)
+        
         # Double-click to edit
         self.products_table.itemDoubleClicked.connect(self._on_table_double_click)
         
-        content_layout.addWidget(self.products_table, stretch=1)
+        products_layout.addWidget(self.products_table, stretch=1)
+        
+        self.add_tab(products_widget, "Products (Ctrl+1)", "Ctrl+1")
+        
+        # Tab 2: Stock Audit
+        audit_widget = QWidget()
+        audit_layout = QVBoxLayout(audit_widget)
+        audit_layout.setSpacing(20)
+        audit_layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Instructions label
+        self.audit_label = QLabel("Select a product from the Products tab to view stock audit history.")
+        self.audit_label.setStyleSheet("font-size: 12px; color: gray;")
+        audit_layout.addWidget(self.audit_label)
+        
+        # Stock audit table
+        self.audit_table = QTableWidget()
+        self.audit_table.setColumnCount(7)
+        self.audit_table.setHorizontalHeaderLabels(["Type", "Document Number", "Date", "Supplier/Customer", "Quantity", "Unit Price", "Total"])
+        self.audit_table.horizontalHeader().setStretchLastSection(True)
+        self.audit_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.audit_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.audit_table.setAlternatingRowColors(True)
+        self.audit_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        
+        # Set column resize modes
+        audit_header = self.audit_table.horizontalHeader()
+        audit_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        audit_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        audit_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        audit_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        audit_header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        audit_header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        audit_header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        
+        audit_layout.addWidget(self.audit_table, stretch=1)
+        
+        self.add_tab(audit_widget, "Stock Audit (Ctrl+2)", "Ctrl+2")
     
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
@@ -130,6 +184,22 @@ class ProductsView(BaseTabbedView):
         """Handle double-click on table item."""
         self._open_selected_product()
     
+    def _on_product_selection_changed(self):
+        """Handle product selection change - update stock audit if on audit tab."""
+        selected_items = self.products_table.selectedItems()
+        if selected_items:
+            row = selected_items[0].row()
+            product_id = int(self.products_table.item(row, 0).text())
+            self.selected_product_id = product_id
+            # If on stock audit tab, refresh audit data
+            if self.tab_widget.currentIndex() == 1:
+                self.stock_audit_requested.emit(product_id)
+    
+    def _on_tab_changed(self, index: int):
+        """Handle tab change - refresh stock audit if switching to audit tab."""
+        if index == 1 and self.selected_product_id:  # Stock Audit tab
+            self.stock_audit_requested.emit(self.selected_product_id)
+    
     def _open_selected_product(self):
         """Open details for the currently selected product."""
         selected_items = self.products_table.selectedItems()
@@ -142,11 +212,11 @@ class ProductsView(BaseTabbedView):
         # Request full product details from controller
         self.get_product_details_requested.emit(product_id)
     
-    def show_product_details(self, product: Dict[str, any]):
+    def show_product_details(self, product: Dict[str, any], has_history: bool = False):
         """Show product details dialog with full product data."""
-        self._show_product_details(product)
+        self._show_product_details(product, has_history)
     
-    def _show_product_details(self, product: Dict[str, any]):
+    def _show_product_details(self, product: Dict[str, any], has_history: bool = False):
         """Show product details in a popup dialog."""
         product_id = product.get('id')
         stock_number = product.get('stock_number', '')
@@ -448,6 +518,33 @@ class ProductsView(BaseTabbedView):
             layout.addLayout(perf_layout)
             tyre_widgets['wet_grip'] = wg_combo
             
+            # Noise Class, Noise Performance
+            noise_layout = QHBoxLayout()
+            noise_class_label = QLabel("Noise Class:")
+            noise_class_label.setMinimumWidth(120)
+            noise_class_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+            noise_layout.addWidget(noise_class_label)
+            noise_class_combo = QComboBox()
+            noise_class_combo.setStyleSheet("font-size: 12px;")
+            noise_class_combo.setEditable(True)
+            noise_class_combo.addItem("")
+            noise_class_combo.setCurrentText(product.get('tyre_noise_class', '') or '')
+            noise_layout.addWidget(noise_class_combo)
+            tyre_widgets['noise_class'] = noise_class_combo
+            
+            noise_perf_label = QLabel("Noise Performance:")
+            noise_perf_label.setMinimumWidth(120)
+            noise_perf_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+            noise_layout.addWidget(noise_perf_label)
+            noise_perf_combo = QComboBox()
+            noise_perf_combo.setStyleSheet("font-size: 12px;")
+            noise_perf_combo.setEditable(True)
+            noise_perf_combo.addItem("")
+            noise_perf_combo.setCurrentText(product.get('tyre_noise_performance', '') or '')
+            noise_layout.addWidget(noise_perf_combo, stretch=1)
+            layout.addLayout(noise_layout)
+            tyre_widgets['noise_performance'] = noise_perf_combo
+            
             # Run Flat
             runflat_layout = QHBoxLayout()
             runflat_label = QLabel("Run Flat:")
@@ -518,6 +615,8 @@ class ProductsView(BaseTabbedView):
                     tyre_widgets['product_type'].currentText().strip(),
                     tyre_widgets['rolling_resistance'].currentText().strip(),
                     tyre_widgets['wet_grip'].currentText().strip(),
+                    tyre_widgets['noise_class'].currentText().strip(),
+                    tyre_widgets['noise_performance'].currentText().strip(),
                     "Yes" if tyre_widgets['run_flat'].isChecked() else "",
                     tyre_widgets['tyre_url'].text().strip(),
                     tyre_widgets['brand_url'].text().strip()
@@ -555,9 +654,16 @@ class ProductsView(BaseTabbedView):
         delete_btn.setMinimumHeight(30)
         delete_btn.clicked.connect(handle_delete)
         
+        # Disable delete button if product has history
+        if has_history:
+            delete_btn.setEnabled(False)
+            delete_btn.setToolTip("Cannot delete product with transaction history")
+        
         # Ctrl+Shift+D shortcut for delete
         delete_shortcut = QShortcut(QKeySequence("Ctrl+Shift+D"), dialog)
         delete_shortcut.activated.connect(handle_delete)
+        if has_history:
+            delete_shortcut.setEnabled(False)
         button_layout.addWidget(delete_btn)
         
         cancel_btn = QPushButton("Cancel (Esc)")
@@ -610,6 +716,7 @@ class ProductsView(BaseTabbedView):
         
         yes_btn = QPushButton("Yes")
         yes_btn.clicked.connect(handle_yes)
+        yes_btn.setDefault(True)  # Make Yes the default button (Enter key)
         ask_button_layout.addWidget(yes_btn)
         
         no_btn = QPushButton("No")
@@ -617,6 +724,9 @@ class ProductsView(BaseTabbedView):
         ask_button_layout.addWidget(no_btn)
         
         ask_layout.addLayout(ask_button_layout)
+        
+        # Set focus on Yes button so user can press Enter immediately
+        yes_btn.setFocus()
         
         if ask_dialog.exec() == QDialog.DialogCode.Rejected:
             return
@@ -1143,6 +1253,71 @@ class ProductsView(BaseTabbedView):
             self.products_table.setFocus()
             # Ensure the first row is visible
             self.products_table.scrollToItem(self.products_table.item(0, 0))
+            # Update selected product ID
+            self.selected_product_id = products[0]['id']
+    
+    def load_stock_audit(self, history: Dict[str, List[Dict]]):
+        """Load stock audit history into the audit table."""
+        invoices = history.get('invoices', [])
+        sales = history.get('sales', [])
+        
+        # Combine invoices and sales into single list
+        all_transactions = []
+        for inv in invoices:
+            all_transactions.append({
+                'type': 'Invoice',
+                'document_number': inv.get('invoice_number', ''),
+                'date': inv.get('invoice_date', ''),
+                'supplier_customer': inv.get('supplier_name', ''),
+                'quantity': inv.get('quantity', 0),
+                'unit_price': inv.get('unit_price', 0),
+                'total': inv.get('line_total', 0)
+            })
+        for sale in sales:
+            all_transactions.append({
+                'type': 'Sale',
+                'document_number': sale.get('invoice_number', ''),
+                'date': sale.get('invoice_date', ''),
+                'supplier_customer': sale.get('customer_name', ''),
+                'quantity': sale.get('quantity', 0),
+                'unit_price': sale.get('unit_price', 0),
+                'total': sale.get('line_total', 0)
+            })
+        
+        # Sort by date descending
+        all_transactions.sort(key=lambda x: x.get('date', ''), reverse=True)
+        
+        self.audit_table.setRowCount(len(all_transactions))
+        
+        for row, transaction in enumerate(all_transactions):
+            self.audit_table.setItem(row, 0, QTableWidgetItem(transaction.get('type', '')))
+            self.audit_table.setItem(row, 1, QTableWidgetItem(str(transaction.get('document_number', ''))))
+            self.audit_table.setItem(row, 2, QTableWidgetItem(str(transaction.get('date', ''))))
+            self.audit_table.setItem(row, 3, QTableWidgetItem(transaction.get('supplier_customer', '')))
+            
+            # Format quantity
+            qty = transaction.get('quantity', 0)
+            qty_str = f"{qty:.2f}" if isinstance(qty, (int, float)) else str(qty)
+            self.audit_table.setItem(row, 4, QTableWidgetItem(qty_str))
+            
+            # Format unit price
+            price = transaction.get('unit_price', 0)
+            price_str = f"£{price:.2f}" if isinstance(price, (int, float)) else str(price)
+            self.audit_table.setItem(row, 5, QTableWidgetItem(price_str))
+            
+            # Format total
+            total = transaction.get('total', 0)
+            total_str = f"£{total:.2f}" if isinstance(total, (int, float)) else str(total)
+            self.audit_table.setItem(row, 6, QTableWidgetItem(total_str))
+        
+        # Update label
+        if self.selected_product_id:
+            if len(all_transactions) > 0:
+                self.audit_label.setText(f"Stock audit history for product ID {self.selected_product_id} ({len(all_transactions)} transactions)")
+            else:
+                self.audit_label.setText(f"No transaction history found for product ID {self.selected_product_id}")
+        else:
+            self.audit_label.setText("Select a product from the Products tab to view stock audit history.")
     
     def show_success(self, message: str):
         """Display a success message."""

@@ -1,7 +1,7 @@
 """Inventory view GUI."""
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView
+    QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
+    QHeaderView, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QKeyEvent
@@ -21,6 +21,9 @@ class InventoryTableWidget(QTableWidget):
 class InventoryView(BaseTabbedView):
     """Inventory management GUI."""
     
+    # Additional signals beyond base class
+    filter_changed = Signal(bool)  # Signal when filter checkbox changes
+    
     def __init__(self):
         """Initialize the inventory view."""
         super().__init__(title="Inventory", current_view="inventory")
@@ -31,6 +34,16 @@ class InventoryView(BaseTabbedView):
         """Create and layout UI widgets."""
         # Get content layout to add widgets directly (no tabs needed)
         content_layout = self.get_content_layout()
+        
+        # Filter checkbox
+        filter_layout = QHBoxLayout()
+        filter_layout.setContentsMargins(0, 0, 0, 0)
+        self.show_out_of_stock_checkbox = QCheckBox("Show out of stock items")
+        self.show_out_of_stock_checkbox.setChecked(False)  # Default to unchecked (hide out-of-stock)
+        self.show_out_of_stock_checkbox.stateChanged.connect(self._on_filter_changed)
+        filter_layout.addWidget(self.show_out_of_stock_checkbox)
+        filter_layout.addStretch()
+        content_layout.addLayout(filter_layout)
         
         # Inventory table
         self.inventory_table = InventoryTableWidget()
@@ -53,6 +66,11 @@ class InventoryView(BaseTabbedView):
         
         content_layout.addWidget(self.inventory_table, stretch=1)
     
+    def _on_filter_changed(self, state: int):
+        """Handle filter checkbox state change."""
+        show_out_of_stock = state == Qt.CheckState.Checked
+        self.filter_changed.emit(show_out_of_stock)
+    
     def _setup_keyboard_navigation(self):
         """Set up keyboard navigation."""
         # Tab order: Table -> Navigation panel
@@ -71,13 +89,21 @@ class InventoryView(BaseTabbedView):
             if not self.inventory_table.selectedItems():
                 self.inventory_table.selectRow(0)
     
-    def load_inventory(self, inventory_items: List[Dict[str, any]]):
+    def load_inventory(self, inventory_items: List[Dict[str, any]], include_out_of_stock: bool = False):
         """
         Load inventory items into the table.
         
         Args:
             inventory_items: List of inventory item dictionaries with stock_number, description, stock_quantity
+            include_out_of_stock: If False, filter out items with stock_quantity <= 0
         """
+        # Filter out out-of-stock items if not including them
+        if not include_out_of_stock:
+            inventory_items = [
+                item for item in inventory_items 
+                if item.get('stock_quantity', 0.0) > 0
+            ]
+        
         self.inventory_table.setRowCount(len(inventory_items))
         
         for row, item in enumerate(inventory_items):

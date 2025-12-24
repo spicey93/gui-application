@@ -59,6 +59,8 @@ class Product:
                         tyre_product_type TEXT,
                         tyre_rolling_resistance TEXT,
                         tyre_wet_grip TEXT,
+                        tyre_noise_class TEXT,
+                        tyre_noise_performance TEXT,
                         tyre_run_flat TEXT,
                         tyre_url TEXT,
                         tyre_brand_url TEXT,
@@ -283,6 +285,8 @@ class Product:
                     ('tyre_product_type', 'TEXT'),
                     ('tyre_rolling_resistance', 'TEXT'),
                     ('tyre_wet_grip', 'TEXT'),
+                    ('tyre_noise_class', 'TEXT'),
+                    ('tyre_noise_performance', 'TEXT'),
                     ('tyre_run_flat', 'TEXT'),
                     ('tyre_url', 'TEXT'),
                     ('tyre_brand_url', 'TEXT')
@@ -330,6 +334,8 @@ class Product:
         tyre_product_type: Optional[str] = None,
         tyre_rolling_resistance: Optional[str] = None,
         tyre_wet_grip: Optional[str] = None,
+        tyre_noise_class: Optional[str] = None,
+        tyre_noise_performance: Optional[str] = None,
         tyre_run_flat: Optional[str] = None,
         tyre_url: Optional[str] = None,
         tyre_brand_url: Optional[str] = None
@@ -356,7 +362,11 @@ class Product:
         
         stock_number = stock_number.strip()
         description = description.strip() if description else ""
-        type = type.strip() if type else ""
+        # For tyre products, default type to "Tyre" instead of using the passed type
+        if is_tyre:
+            type = "Tyre"
+        else:
+            type = type.strip() if type else ""
         
         try:
             # Check schema first and migrate if needed
@@ -369,6 +379,19 @@ class Product:
             
             if needs_migration:
                 self._init_database()
+            
+            # Check for duplicate stock_number for this user
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, stock_number, description 
+                    FROM products 
+                    WHERE user_id = ? AND stock_number = ?
+                """, (user_id, stock_number))
+                existing = cursor.fetchone()
+                if existing:
+                    existing_desc = existing[2] or "No description"
+                    return False, f"A product with stock number '{stock_number}' already exists for this user (Description: {existing_desc})"
             
             # Now perform the insert
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
@@ -390,15 +413,17 @@ class Product:
                         is_tyre, tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                         tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                         tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                        tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
-                    ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                        tyre_run_flat, tyre_url, tyre_brand_url
+                    ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     stock_number, description, type, user_id, next_user_product_id,
                     1 if is_tyre else 0,
                     tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                     tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                     tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                    tyre_run_flat, tyre_url, tyre_brand_url
                 ))
                 conn.commit()
                 product_id = cursor.lastrowid
@@ -417,21 +442,25 @@ class Product:
                             WHERE user_id = ?
                         """, (user_id,))
                         next_user_product_id = cursor.fetchone()[0]
+                        # For tyre products, ensure type is "Tyre"
+                        product_type = "Tyre" if is_tyre else type
                         cursor.execute("""
                             INSERT INTO products (
                                 stock_number, description, type, user_id, user_product_id, stock_quantity,
                                 is_tyre, tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                                 tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                                 tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                                tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
-                            ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                                tyre_run_flat, tyre_url, tyre_brand_url
+                            ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
-                            stock_number, description, type, user_id, next_user_product_id,
+                            stock_number, description, product_type, user_id, next_user_product_id,
                             1 if is_tyre else 0,
                             tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                             tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                             tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                            tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                            tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                            tyre_run_flat, tyre_url, tyre_brand_url
                         ))
                         conn.commit()
                     return True, f"Product created successfully (ID: {next_user_product_id})"
@@ -468,7 +497,8 @@ class Product:
                     tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                     tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                     tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                    tyre_run_flat, tyre_url, tyre_brand_url
                 FROM products 
                 WHERE user_id = ? 
                 ORDER BY user_product_id
@@ -507,7 +537,8 @@ class Product:
                     tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                     tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                     tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                    tyre_run_flat, tyre_url, tyre_brand_url
                 FROM products 
                 WHERE user_product_id = ? AND user_id = ?
             """, (product_id, user_id))
@@ -540,6 +571,8 @@ class Product:
         tyre_product_type: Optional[str] = None,
         tyre_rolling_resistance: Optional[str] = None,
         tyre_wet_grip: Optional[str] = None,
+        tyre_noise_class: Optional[str] = None,
+        tyre_noise_performance: Optional[str] = None,
         tyre_run_flat: Optional[str] = None,
         tyre_url: Optional[str] = None,
         tyre_brand_url: Optional[str] = None
@@ -581,6 +614,18 @@ class Product:
                 conn.close()
                 return False, "Product not found"
             
+            # Check for duplicate stock_number for this user (excluding the current product)
+            cursor.execute("""
+                SELECT id, stock_number, description 
+                FROM products 
+                WHERE user_id = ? AND stock_number = ? AND id != ?
+            """, (user_id, stock_number, internal_id_result[0]))
+            existing = cursor.fetchone()
+            if existing:
+                existing_desc = existing[2] or "No description"
+                conn.close()
+                return False, f"A product with stock number '{stock_number}' already exists for this user (Description: {existing_desc})"
+            
             # Build update query dynamically based on provided fields
             update_fields = ["stock_number = ?", "description = ?", "type = ?"]
             update_values = [stock_number, description, type]
@@ -605,6 +650,8 @@ class Product:
                 'tyre_product_type': tyre_product_type,
                 'tyre_rolling_resistance': tyre_rolling_resistance,
                 'tyre_wet_grip': tyre_wet_grip,
+                'tyre_noise_class': tyre_noise_class,
+                'tyre_noise_performance': tyre_noise_performance,
                 'tyre_run_flat': tyre_run_flat,
                 'tyre_url': tyre_url,
                 'tyre_brand_url': tyre_brand_url
@@ -779,7 +826,8 @@ class Product:
                     tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                     tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                     tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                    tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
+                    tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                    tyre_run_flat, tyre_url, tyre_brand_url
                 FROM products 
                 WHERE user_id = ? AND is_tyre = 1
                 ORDER BY user_product_id
@@ -841,6 +889,39 @@ class Product:
         except Exception:
             return []
     
+    def _generate_tyre_stock_number(self, tyre_data: Dict[str, any]) -> str:
+        """
+        Generate stock number for a tyre product.
+        
+        Format: width + aspect_ratio + rim + speed_rating + brand_first_two_chars + manufacturer_code
+        Example: 205/55R16 91V BLACKARROW P15 -> 2055516VBLBA2219
+        
+        Args:
+            tyre_data: Dictionary with tyre data from catalogue
+        
+        Returns:
+            Generated stock number string
+        """
+        width = str(tyre_data.get('width', '') or '').strip()
+        profile = str(tyre_data.get('profile', '') or '').strip()
+        diameter = str(tyre_data.get('diameter', '') or '').strip()
+        speed_rating = str(tyre_data.get('speed_rating', '') or '').strip()
+        brand = str(tyre_data.get('brand', '') or '').strip()
+        manufacturer_code = str(tyre_data.get('manufacturer_code', '') or '').strip()
+        
+        # Get first two characters of brand (uppercase)
+        brand_prefix = brand[:2].upper() if brand else ''
+        
+        # Build stock number: width + profile + diameter + speed_rating + brand_prefix + manufacturer_code
+        stock_number_parts = [width, profile, diameter, speed_rating, brand_prefix, manufacturer_code]
+        stock_number = ''.join(stock_number_parts)
+        
+        # Fallback to EAN or description if we don't have enough data
+        if not stock_number or len(stock_number) < 5:
+            stock_number = tyre_data.get('ean', '') or tyre_data.get('description', '')[:50] or 'TYRE'
+        
+        return stock_number
+    
     def create_from_tyre_catalogue(self, tyre_data: Dict[str, any], user_id: int) -> Tuple[bool, str, Optional[int]]:
         """
         Create a product from a tyre catalogue entry.
@@ -852,13 +933,24 @@ class Product:
         Returns:
             Tuple of (success: bool, message: str, internal_product_id: Optional[int])
         """
-        # Use EAN as stock_number if available, otherwise use description
-        stock_number = tyre_data.get('ean', '') or tyre_data.get('description', '')[:50] or 'TYRE'
+        # Generate stock number from tyre specifications
+        stock_number = self._generate_tyre_stock_number(tyre_data)
         description = tyre_data.get('description', '')
         
         try:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
                 cursor = conn.cursor()
+                
+                # Check for duplicate stock_number for this user
+                cursor.execute("""
+                    SELECT id, stock_number, description 
+                    FROM products 
+                    WHERE user_id = ? AND stock_number = ?
+                """, (user_id, stock_number))
+                existing = cursor.fetchone()
+                if existing:
+                    existing_desc = existing[2] or "No description"
+                    return False, f"A product with stock number '{stock_number}' already exists for this user (Description: {existing_desc})", None
                 
                 # Calculate the next user_product_id for this user
                 cursor.execute("""
@@ -874,10 +966,11 @@ class Product:
                         is_tyre, tyre_brand, tyre_model, tyre_pattern, tyre_width, tyre_profile,
                         tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                         tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
-                        tyre_rolling_resistance, tyre_wet_grip, tyre_run_flat, tyre_url, tyre_brand_url
-                    ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
+                        tyre_run_flat, tyre_url, tyre_brand_url
+                    ) VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    stock_number, description, tyre_data.get('product_type', ''), user_id, next_user_product_id,
+                    stock_number, description, "Tyre", user_id, next_user_product_id,
                     1,  # is_tyre = True
                     tyre_data.get('brand', ''),
                     tyre_data.get('model', ''),
@@ -894,6 +987,8 @@ class Product:
                     tyre_data.get('product_type', ''),
                     tyre_data.get('rolling_resistance', ''),
                     tyre_data.get('wet_grip', ''),
+                    tyre_data.get('noise_class', ''),
+                    tyre_data.get('noise_performance', ''),
                     tyre_data.get('run_flat', ''),
                     tyre_data.get('tyre_url', ''),
                     tyre_data.get('brand_url', '')
@@ -903,4 +998,96 @@ class Product:
                 return True, f"Product created successfully (ID: {next_user_product_id})", internal_product_id
         except Exception as e:
             return False, f"Error creating product from catalogue: {str(e)}", None
+    
+    def has_history(self, internal_product_id: int) -> bool:
+        """
+        Check if a product has any transaction history.
+        
+        Args:
+            internal_product_id: Internal database product ID (not user_product_id)
+        
+        Returns:
+            True if product has history in invoices or sales, False otherwise
+        """
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                
+                # Check invoice_items
+                cursor.execute("""
+                    SELECT COUNT(*) FROM invoice_items 
+                    WHERE product_id = ?
+                """, (internal_product_id,))
+                invoice_count = cursor.fetchone()[0]
+                
+                # Check sales_invoice_items
+                cursor.execute("""
+                    SELECT COUNT(*) FROM sales_invoice_items 
+                    WHERE product_id = ?
+                """, (internal_product_id,))
+                sales_count = cursor.fetchone()[0]
+                
+                return (invoice_count + sales_count) > 0
+        except Exception:
+            return False
+    
+    def get_history(self, internal_product_id: int) -> Dict[str, List[Dict]]:
+        """
+        Get transaction history for a product.
+        
+        Args:
+            internal_product_id: Internal database product ID (not user_product_id)
+        
+        Returns:
+            Dictionary with keys 'invoices' and 'sales', each containing list of transaction records
+        """
+        history = {'invoices': [], 'sales': []}
+        
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Get invoice history
+                cursor.execute("""
+                    SELECT 
+                        i.invoice_number,
+                        i.invoice_date,
+                        s.name as supplier_name,
+                        ii.quantity,
+                        ii.unit_price,
+                        ii.line_total,
+                        ii.created_at
+                    FROM invoice_items ii
+                    JOIN invoices i ON ii.invoice_id = i.id
+                    JOIN suppliers s ON i.supplier_id = s.id
+                    WHERE ii.product_id = ?
+                    ORDER BY i.invoice_date DESC, i.invoice_number
+                """, (internal_product_id,))
+                invoice_rows = cursor.fetchall()
+                history['invoices'] = [dict(row) for row in invoice_rows]
+                
+                # Get sales history
+                cursor.execute("""
+                    SELECT 
+                        si.invoice_number,
+                        si.invoice_date,
+                        c.name as customer_name,
+                        sii.quantity,
+                        sii.unit_price,
+                        sii.line_total,
+                        sii.created_at
+                    FROM sales_invoice_items sii
+                    JOIN sales_invoices si ON sii.sales_invoice_id = si.id
+                    JOIN customers c ON si.customer_id = c.id
+                    WHERE sii.product_id = ?
+                    ORDER BY si.invoice_date DESC, si.invoice_number
+                """, (internal_product_id,))
+                sales_rows = cursor.fetchall()
+                history['sales'] = [dict(row) for row in sales_rows]
+                
+        except Exception:
+            pass
+        
+        return history
 

@@ -40,6 +40,7 @@ class InventoryController(QObject):
         self.inventory_view.sales_requested.connect(self.handle_sales)
         self.inventory_view.configuration_requested.connect(self.handle_configuration)
         self.inventory_view.logout_requested.connect(self.handle_logout)
+        self.inventory_view.filter_changed.connect(self.handle_filter_changed)
         
         # Load initial inventory
         self.refresh_inventory()
@@ -53,7 +54,13 @@ class InventoryController(QObject):
         """Refresh the inventory list."""
         products = self.product_model.get_all(self.user_id)
         # Products already include stock_quantity from the model
-        self.inventory_view.load_inventory(products)
+        # Check checkbox state to determine if we should include out-of-stock items
+        show_out_of_stock = self.inventory_view.show_out_of_stock_checkbox.isChecked()
+        self.inventory_view.load_inventory(products, include_out_of_stock=show_out_of_stock)
+    
+    def handle_filter_changed(self, show_out_of_stock: bool):
+        """Handle filter checkbox state change."""
+        self.refresh_inventory()
     
     def handle_dashboard(self):
         """Handle dashboard navigation."""
