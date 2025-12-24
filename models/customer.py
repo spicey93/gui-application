@@ -218,6 +218,65 @@ class Customer:
         except Exception as e:
             return False, f"Error updating customer: {str(e)}"
     
+    def search(self, user_id: int, name: Optional[str] = None, 
+               postcode: Optional[str] = None, phone: Optional[str] = None) -> List[Dict[str, any]]:
+        """
+        Search customers by name, postcode, or phone number.
+        
+        Args:
+            user_id: ID of the user
+            name: Search term for customer name (partial match, case-insensitive)
+            postcode: Search term for postcode (partial match, case-insensitive)
+            phone: Search term for phone number (partial match, case-insensitive)
+        
+        Returns:
+            List of matching customer dictionaries
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Build query based on provided search terms
+                query = """
+                    SELECT 
+                        id as internal_id,
+                        user_customer_id as id,
+                        name, 
+                        phone,
+                        house_name_no,
+                        street_address,
+                        city,
+                        county,
+                        postcode,
+                        created_at 
+                    FROM customers 
+                    WHERE user_id = ?
+                """
+                params = [user_id]
+                
+                conditions = []
+                if name:
+                    conditions.append("name LIKE ?")
+                    params.append(f"%{name.strip()}%")
+                if postcode:
+                    conditions.append("postcode LIKE ?")
+                    params.append(f"%{postcode.strip()}%")
+                if phone:
+                    conditions.append("phone LIKE ?")
+                    params.append(f"%{phone.strip()}%")
+                
+                if conditions:
+                    query += " AND (" + " OR ".join(conditions) + ")"
+                
+                query += " ORDER BY user_customer_id"
+                
+                cursor.execute(query, tuple(params))
+                rows = cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception:
+            return []
+    
     def delete(self, customer_id: int, user_id: int) -> Tuple[bool, str]:
         """
         Delete a customer by user_customer_id.

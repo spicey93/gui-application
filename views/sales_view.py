@@ -546,12 +546,24 @@ class SalesView(BaseTabbedView):
         # Request vehicles from controller (will be empty for now)
         vehicles = []
         
+        # Get customer model and user_id from controller if available
+        customer_model = None
+        user_id = None
+        refresh_callback = None
+        if hasattr(self, 'sales_controller') and self.sales_controller:
+            customer_model = getattr(self.sales_controller, 'customer_model', None)
+            user_id = getattr(self.sales_controller, 'user_id', None)
+            refresh_callback = lambda: self.sales_controller.refresh_customers() if hasattr(self.sales_controller, 'refresh_customers') else None
+        
         dialog = SalesWizardDialog(
             self, 
             customers=self._customers_data,
             products=self._products_data,
             services=self._services_data,
-            vehicles=vehicles
+            vehicles=vehicles,
+            customer_model=customer_model,
+            user_id=user_id,
+            refresh_customers_callback=refresh_callback
         )
         
         # Update document number preview when type changes

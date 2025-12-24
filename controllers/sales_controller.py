@@ -116,7 +116,7 @@ class SalesController(QObject):
     
     def handle_create_document(self, wizard_data: Dict):
         """Handle create sales document from wizard."""
-        customer_id = wizard_data.get('customer_id')
+        customer_id = wizard_data.get('customer_id')  # This is internal_id from wizard
         document_date = wizard_data.get('document_date')
         document_type = wizard_data.get('document_type', 'order')
         notes = wizard_data.get('notes', '')
@@ -124,13 +124,12 @@ class SalesController(QObject):
         vehicle_id = wizard_data.get('vehicle_id')
         items = wizard_data.get('items', [])
         
-        # Get internal customer ID
-        customer_data = self.customer_model.get_by_id(customer_id, self.user_id)
-        if not customer_data:
-            self.sales_view.show_error_dialog("Customer not found")
+        # customer_id from wizard is already internal_id
+        if not customer_id:
+            self.sales_view.show_error_dialog("Customer ID is required")
             return
         
-        internal_customer_id = customer_data['internal_id']
+        internal_customer_id = customer_id
         
         # Create document (document number will be auto-generated)
         success, message, sales_invoice_id = self.sales_invoice_model.create(
