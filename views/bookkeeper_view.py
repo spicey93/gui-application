@@ -34,8 +34,8 @@ class BookkeeperView(BaseTabbedView):
     """Book Keeper management GUI."""
     
     # Additional signals beyond base class
-    create_account_requested = Signal(int, str, str, float, bool)
-    update_account_requested = Signal(int, int, str, str, float, bool)
+    create_account_requested = Signal(int, str, str, str, bool)  # code, name, category, subtype, is_bank
+    update_account_requested = Signal(int, int, str, str, str, bool)  # id, code, name, category, subtype, is_bank
     delete_account_requested = Signal(int)
     transfer_funds_requested = Signal(int, int, float, str, str, str)  # from_account_id, to_account_id, amount, description, date_str, reference
     transfer_accounts_requested = Signal()  # Request accounts for transfer dialog
@@ -46,6 +46,7 @@ class BookkeeperView(BaseTabbedView):
         super().__init__(title="Book Keeper", current_view="bookkeeper")
         self.selected_account_id: Optional[int] = None
         self._transfer_dialog = None  # Store reference to transfer dialog
+        self._accounts_data: Dict[int, Dict] = {}  # Store account data by ID for quick lookup
         self._create_widgets()
         self._setup_keyboard_navigation()
     
@@ -77,8 +78,8 @@ class BookkeeperView(BaseTabbedView):
         
         # Accounts table
         self.accounts_table = AccountsTableWidget(self._switch_to_activity_tab)
-        self.accounts_table.setColumnCount(5)
-        self.accounts_table.setHorizontalHeaderLabels(["Code", "Name", "Type", "Balance", "Bank"])
+        self.accounts_table.setColumnCount(3)
+        self.accounts_table.setHorizontalHeaderLabels(["Code", "Name", "Account Type"])
         self.accounts_table.horizontalHeader().setStretchLastSection(True)
         self.accounts_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.accounts_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -90,8 +91,6 @@ class BookkeeperView(BaseTabbedView):
         header.resizeSection(0, 100)
         header.resizeSection(1, 250)
         header.resizeSection(2, 120)
-        header.resizeSection(3, 120)
-        header.resizeSection(4, 60)
         
         # Enable keyboard navigation
         self.accounts_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -212,14 +211,15 @@ class BookkeeperView(BaseTabbedView):
         account_code = self.accounts_table.item(row, 0).text()
         account_name = self.accounts_table.item(row, 1).text()
         account_type = self.accounts_table.item(row, 2).text()
-        balance_item = self.accounts_table.item(row, 3)
-        balance = float(balance_item.text().replace('£', '').replace(',', '')) if balance_item else 0.0
-        is_bank = self.accounts_table.item(row, 4).text() == "Yes"
         
-        self._show_account_details(account_id, account_code, account_name, account_type, balance, is_bank)
+        # Get subtype from stored account data
+        account_data = self._accounts_data.get(account_id, {})
+        account_subtype = account_data.get('account_subtype')
+        
+        self._show_account_details(account_id, account_code, account_name, account_type, account_subtype)
     
     def _show_account_details(self, account_id: int, account_code: str, account_name: str, 
-                              account_type: str, balance: float, is_bank: bool):
+                              account_type: str, account_subtype: Optional[str]):
         """Show account details in a popup dialog."""
         dialog = QDialog(self)
         dialog.setWindowTitle("Account Details")
@@ -240,6 +240,30 @@ class BookkeeperView(BaseTabbedView):
         title_label = QLabel("Account Information")
         title_label.setStyleSheet("font-size: 20px; font-weight: bold;")
         layout.addWidget(title_label)
+        
+        # Account Category
+        category_layout = QHBoxLayout()
+        category_label = QLabel("Account Category:")
+        category_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        category_label.setMinimumWidth(150)
+        category_layout.addWidget(category_label)
+        category_combo = QComboBox()
+        category_combo.setStyleSheet("font-size: 12px;")
+        category_combo.addItems(["Asset", "Equity", "Expense", "Income", "Liability"])
+        category_combo.setCurrentText(account_type)
+        category_layout.addWidget(category_combo, stretch=1)
+        layout.addLayout(category_layout)
+        
+        # Account Type (dependent on category)
+        type_layout = QHBoxLayout()
+        type_label = QLabel("Account Type:")
+        type_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        type_label.setMinimumWidth(150)
+        type_layout.addWidget(type_label)
+        type_combo = QComboBox()
+        type_combo.setStyleSheet("font-size: 12px;")
+        type_layout.addWidget(type_combo, stretch=1)
+        layout.addLayout(type_layout)
         
         # Account Code
         code_layout = QHBoxLayout()
@@ -263,42 +287,31 @@ class BookkeeperView(BaseTabbedView):
         name_layout.addWidget(name_entry, stretch=1)
         layout.addLayout(name_layout)
         
-        # Account Type
-        type_layout = QHBoxLayout()
-        type_label = QLabel("Account Type:")
-        type_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        type_label.setMinimumWidth(150)
-        type_layout.addWidget(type_label)
-        type_combo = QComboBox()
-        type_combo.setStyleSheet("font-size: 12px;")
-        type_combo.addItems(["Asset", "Liability", "Equity", "Income", "Expense"])
-        type_combo.setCurrentText(account_type)
-        type_layout.addWidget(type_combo, stretch=1)
-        layout.addLayout(type_layout)
+        # Define account type options for each category
+        account_type_options = {
+            "Asset": ["Bank Account", "Cash Account", "Current Asset", "Fixed Asset", "Stock Asset", "Other Asset", "Other Financial Account", "Prepayments"],
+            "Equity": ["Equity"],
+            "Expense": ["Cost of Sales", "Depreciation", "Expenses", "Overheads"],
+            "Income": ["Turnover", "Other Income", "Other Operating Income"],
+            "Liability": ["Current Liability", "Long-Term Liability"]
+        }
         
-        # Opening Balance
-        balance_layout = QHBoxLayout()
-        balance_label = QLabel("Opening Balance:")
-        balance_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        balance_label.setMinimumWidth(150)
-        balance_layout.addWidget(balance_label)
-        balance_entry = QDoubleSpinBox()
-        balance_entry.setStyleSheet("font-size: 12px;")
-        balance_entry.setRange(-999999999.99, 999999999.99)
-        balance_entry.setDecimals(2)
-        balance_entry.setPrefix("£ ")
-        balance_entry.setValue(balance)
-        balance_layout.addWidget(balance_entry, stretch=1)
-        layout.addLayout(balance_layout)
+        def update_type_options():
+            """Update account type options based on selected category."""
+            category = category_combo.currentText()
+            type_combo.clear()
+            if category in account_type_options:
+                type_combo.addItems(account_type_options[category])
+            # Set current subtype if it exists
+            if account_subtype:
+                index = type_combo.findText(account_subtype)
+                if index >= 0:
+                    type_combo.setCurrentIndex(index)
         
-        # Is Bank Account
-        bank_layout = QHBoxLayout()
-        bank_checkbox = QCheckBox("Bank Account (for future reconciliation)")
-        bank_checkbox.setChecked(is_bank)
-        bank_checkbox.setStyleSheet("font-size: 12px;")
-        bank_layout.addWidget(bank_checkbox)
-        bank_layout.addStretch()
-        layout.addLayout(bank_layout)
+        # Connect category change to update type options
+        category_combo.currentTextChanged.connect(update_type_options)
+        # Initialize with current category
+        update_type_options()
         
         layout.addStretch()
         
@@ -314,15 +327,21 @@ class BookkeeperView(BaseTabbedView):
                 return
             
             new_name = name_entry.text().strip()
-            new_type = type_combo.currentText()
-            new_balance = balance_entry.value()
-            new_is_bank = bank_checkbox.isChecked()
+            new_category = category_combo.currentText()
+            new_subtype = type_combo.currentText()
             
             if not new_name:
                 QMessageBox.critical(dialog, "Error", "Please enter an account name")
                 return
             
-            self.update_account_requested.emit(account_id, new_code, new_name, new_type, new_balance, new_is_bank)
+            if not new_subtype:
+                QMessageBox.critical(dialog, "Error", "Please select an account type")
+                return
+            
+            # Infer is_bank_account: Asset category + Bank Account type
+            new_is_bank = (new_category == "Asset" and new_subtype == "Bank Account")
+            
+            self.update_account_requested.emit(account_id, new_code, new_name, new_category, new_subtype, new_is_bank)
             dialog.accept()
         
         def handle_delete():
@@ -395,6 +414,29 @@ class BookkeeperView(BaseTabbedView):
         title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
         layout.addWidget(title_label)
         
+        # Account Category
+        category_layout = QHBoxLayout()
+        category_label = QLabel("Account Category:")
+        category_label.setMinimumWidth(150)
+        category_label.setStyleSheet("font-size: 11px;")
+        category_layout.addWidget(category_label)
+        category_combo = QComboBox()
+        category_combo.setStyleSheet("font-size: 11px;")
+        category_combo.addItems(["Asset", "Equity", "Expense", "Income", "Liability"])
+        category_layout.addWidget(category_combo, stretch=1)
+        layout.addLayout(category_layout)
+        
+        # Account Type (dependent on category)
+        type_layout = QHBoxLayout()
+        type_label = QLabel("Account Type:")
+        type_label.setMinimumWidth(150)
+        type_label.setStyleSheet("font-size: 11px;")
+        type_layout.addWidget(type_label)
+        type_combo = QComboBox()
+        type_combo.setStyleSheet("font-size: 11px;")
+        type_layout.addWidget(type_combo, stretch=1)
+        layout.addLayout(type_layout)
+        
         # Account Code
         code_layout = QHBoxLayout()
         code_label = QLabel("Account Code:")
@@ -418,40 +460,27 @@ class BookkeeperView(BaseTabbedView):
         name_layout.addWidget(name_entry, stretch=1)
         layout.addLayout(name_layout)
         
-        # Account Type
-        type_layout = QHBoxLayout()
-        type_label = QLabel("Account Type:")
-        type_label.setMinimumWidth(150)
-        type_label.setStyleSheet("font-size: 11px;")
-        type_layout.addWidget(type_label)
-        type_combo = QComboBox()
-        type_combo.setStyleSheet("font-size: 11px;")
-        type_combo.addItems(["Asset", "Liability", "Equity", "Income", "Expense"])
-        type_layout.addWidget(type_combo, stretch=1)
-        layout.addLayout(type_layout)
+        # Define account type options for each category
+        account_type_options = {
+            "Asset": ["Bank Account", "Cash Account", "Current Asset", "Fixed Asset", "Stock Asset", "Other Asset", "Other Financial Account", "Prepayments"],
+            "Equity": ["Equity"],
+            "Expense": ["Cost of Sales", "Depreciation", "Expenses", "Overheads"],
+            "Income": ["Turnover", "Other Income", "Other Operating Income"],
+            "Liability": ["Current Liability", "Long-Term Liability"]
+        }
         
-        # Opening Balance
-        balance_layout = QHBoxLayout()
-        balance_label = QLabel("Opening Balance:")
-        balance_label.setMinimumWidth(150)
-        balance_label.setStyleSheet("font-size: 11px;")
-        balance_layout.addWidget(balance_label)
-        balance_entry = QDoubleSpinBox()
-        balance_entry.setStyleSheet("font-size: 11px;")
-        balance_entry.setRange(-999999999.99, 999999999.99)
-        balance_entry.setDecimals(2)
-        balance_entry.setPrefix("£ ")
-        balance_entry.setValue(0.0)
-        balance_layout.addWidget(balance_entry, stretch=1)
-        layout.addLayout(balance_layout)
+        def update_type_options():
+            """Update account type options based on selected category."""
+            category = category_combo.currentText()
+            type_combo.clear()
+            if category in account_type_options:
+                type_combo.addItems(account_type_options[category])
         
-        # Is Bank Account
-        bank_layout = QHBoxLayout()
-        bank_checkbox = QCheckBox("Bank Account (for future reconciliation)")
-        bank_checkbox.setStyleSheet("font-size: 11px;")
-        bank_layout.addWidget(bank_checkbox)
-        bank_layout.addStretch()
-        layout.addLayout(bank_layout)
+        # Connect category change to update type options
+        category_combo.currentTextChanged.connect(update_type_options)
+        # Initialize with first category
+        update_type_options()
+        
         
         # Status label
         status_label = QLabel("")
@@ -472,15 +501,21 @@ class BookkeeperView(BaseTabbedView):
                 return
             
             account_name = name_entry.text().strip()
-            account_type = type_combo.currentText()
-            opening_balance = balance_entry.value()
-            is_bank = bank_checkbox.isChecked()
+            account_category = category_combo.currentText()
+            account_subtype = type_combo.currentText()
             
             if not account_name:
                 status_label.setText("Please enter an account name")
                 return
             
-            self.create_account_requested.emit(account_code, account_name, account_type, opening_balance, is_bank)
+            if not account_subtype:
+                status_label.setText("Please select an account type")
+                return
+            
+            # Infer is_bank_account: Asset category + Bank Account type
+            is_bank = (account_category == "Asset" and account_subtype == "Bank Account")
+            
+            self.create_account_requested.emit(account_code, account_name, account_category, account_subtype, is_bank)
             dialog.accept()
         
         save_btn = QPushButton("Save (Ctrl+Enter)")
@@ -502,8 +537,8 @@ class BookkeeperView(BaseTabbedView):
         
         layout.addLayout(button_layout)
         
-        # Set focus to account code entry
-        code_entry.setFocus()
+        # Set focus to category combo
+        category_combo.setFocus()
         
         # Show dialog
         dialog.exec()
@@ -686,6 +721,9 @@ class BookkeeperView(BaseTabbedView):
     
     def load_accounts(self, accounts: List[Dict[str, any]]):
         """Load accounts into the table."""
+        # Store account data for quick lookup
+        self._accounts_data = {account['id']: account for account in accounts}
+        
         self.accounts_table.setRowCount(len(accounts))
         
         for row, account in enumerate(accounts):
@@ -696,16 +734,6 @@ class BookkeeperView(BaseTabbedView):
             
             self.accounts_table.setItem(row, 1, QTableWidgetItem(account.get('account_name', '')))
             self.accounts_table.setItem(row, 2, QTableWidgetItem(account.get('account_type', '')))
-            
-            # Format balance with currency
-            balance = account.get('current_balance', 0.0)
-            balance_item = QTableWidgetItem(f"£{balance:,.2f}")
-            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.accounts_table.setItem(row, 3, balance_item)
-            
-            # Bank account indicator
-            is_bank = "Yes" if account.get('is_bank_account', 0) else "No"
-            self.accounts_table.setItem(row, 4, QTableWidgetItem(is_bank))
         
         # Resize columns to content
         self.accounts_table.resizeColumnsToContents()
@@ -713,8 +741,6 @@ class BookkeeperView(BaseTabbedView):
         header.resizeSection(0, 100)
         header.resizeSection(1, 250)
         header.resizeSection(2, 120)
-        header.resizeSection(3, 120)
-        header.resizeSection(4, 60)
         
         # Auto-select first row and set focus to table if data exists
         if len(accounts) > 0:

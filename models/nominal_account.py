@@ -55,6 +55,7 @@ class NominalAccount:
                         account_code INTEGER NOT NULL,
                         account_name TEXT NOT NULL,
                         account_type TEXT NOT NULL,
+                        account_subtype TEXT,
                         opening_balance REAL DEFAULT 0.0,
                         is_bank_account INTEGER DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -74,6 +75,9 @@ class NominalAccount:
                 
                 if 'updated_at' not in column_names:
                     cursor.execute("ALTER TABLE nominal_accounts ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                
+                if 'account_subtype' not in column_names:
+                    cursor.execute("ALTER TABLE nominal_accounts ADD COLUMN account_subtype TEXT")
             
             # Clean up orphaned accounts
             cursor.execute("""
@@ -138,15 +142,16 @@ class NominalAccount:
         return True, ""
     
     def create(self, account_code: int, account_name: str, account_type: str, 
-               opening_balance: float = 0.0, is_bank_account: bool = False, 
-               user_id: int = None) -> Tuple[bool, str, Optional[int]]:
+               account_subtype: Optional[str] = None, opening_balance: float = 0.0, 
+               is_bank_account: bool = False, user_id: int = None) -> Tuple[bool, str, Optional[int]]:
         """
         Create a new nominal account.
         
         Args:
             account_code: UK standard account code
             account_name: Account name
-            account_type: Account type (Asset, Liability, Equity, Income, Expense)
+            account_type: Account category (Asset, Liability, Equity, Income, Expense)
+            account_subtype: Account subtype (e.g., Bank Account, Current Asset, etc.)
             opening_balance: Opening balance
             is_bank_account: Whether this is a bank account (for future reconciliation)
             user_id: ID of the user creating the account
@@ -170,11 +175,15 @@ class NominalAccount:
         try:
             with sqlite3.connect(self.db_path, timeout=10.0) as conn:
                 cursor = conn.cursor()
+                # Auto-set is_bank_account if account_subtype is "Bank Account" for Asset category
+                if account_type == self.ACCOUNT_TYPE_ASSET and account_subtype == "Bank Account":
+                    is_bank_account = True
+                
                 cursor.execute("""
                     INSERT INTO nominal_accounts 
-                    (user_id, account_code, account_name, account_type, opening_balance, is_bank_account)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (user_id, account_code, account_name, account_type, opening_balance, 1 if is_bank_account else 0))
+                    (user_id, account_code, account_name, account_type, account_subtype, opening_balance, is_bank_account)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (user_id, account_code, account_name, account_type, account_subtype, opening_balance, 1 if is_bank_account else 0))
                 conn.commit()
                 account_id = cursor.lastrowid
             return True, f"Account created successfully", account_id
@@ -205,6 +214,7 @@ class NominalAccount:
                         account_code,
                         account_name,
                         account_type,
+                        account_subtype,
                         opening_balance,
                         is_bank_account,
                         created_at,
@@ -245,6 +255,7 @@ class NominalAccount:
                         account_code,
                         account_name,
                         account_type,
+                        account_subtype,
                         opening_balance,
                         is_bank_account,
                         created_at,
@@ -262,7 +273,8 @@ class NominalAccount:
             return None
     
     def update(self, account_id: int, account_code: int, account_name: str, 
-               account_type: str, opening_balance: float = 0.0, 
+               account_type: str, account_subtype: Optional[str] = None,
+               opening_balance: float = 0.0, 
                is_bank_account: bool = False, user_id: int = None) -> Tuple[bool, str]:
         """
         Update a nominal account.
@@ -271,7 +283,8 @@ class NominalAccount:
             account_id: Account ID
             account_code: New account code
             account_name: New account name
-            account_type: New account type
+            account_type: New account category
+            account_subtype: New account subtype
             opening_balance: New opening balance
             is_bank_account: Whether this is a bank account
             user_id: ID of the user
@@ -304,12 +317,16 @@ class NominalAccount:
                 if not cursor.fetchone():
                     return False, "Account not found"
                 
+                # Auto-set is_bank_account if account_subtype is "Bank Account" for Asset category
+                if account_type == self.ACCOUNT_TYPE_ASSET and account_subtype == "Bank Account":
+                    is_bank_account = True
+                
                 cursor.execute("""
                     UPDATE nominal_accounts 
-                    SET account_code = ?, account_name = ?, account_type = ?, 
+                    SET account_code = ?, account_name = ?, account_type = ?, account_subtype = ?,
                         opening_balance = ?, is_bank_account = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ? AND user_id = ?
-                """, (account_code, account_name, account_type, opening_balance, 1 if is_bank_account else 0, account_id, user_id))
+                """, (account_code, account_name, account_type, account_subtype, opening_balance, 1 if is_bank_account else 0, account_id, user_id))
                 
                 conn.commit()
             return True, "Account updated successfully"

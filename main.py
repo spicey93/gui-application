@@ -65,8 +65,8 @@ class Application(QMainWindow):
         self.setGeometry(100, 100, 400, 250)
         self.setMinimumSize(400, 250)
         
-        # Load Windows XP theme
-        self._load_xp_theme()
+        # Load modern theme
+        self._load_theme()
         
         # Initialize models
         self.user_model = User()
@@ -159,8 +159,8 @@ class Application(QMainWindow):
         # Set up global keyboard shortcuts
         self._setup_shortcuts()
     
-    def _load_xp_theme(self):
-        """Load Windows XP theme stylesheet."""
+    def _load_theme(self):
+        """Load modern theme stylesheet."""
         apply_theme(self)
     
     def _center_window(self):

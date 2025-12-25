@@ -180,6 +180,105 @@ def clear_database(db_path: str = "data/app.db") -> dict:
     return models
 
 
+def create_default_chart_of_accounts(nominal_account_model: NominalAccount, user_id: int) -> int:
+    """
+    Create default chart of accounts for a UK small business.
+    
+    Args:
+        nominal_account_model: NominalAccount model instance
+        user_id: User ID to create accounts for
+        
+    Returns:
+        Number of accounts created successfully
+    """
+    # Define accounts with: code, name, category, subtype
+    accounts = [
+        # Assets (1000-1999)
+        (1100, "Sales Ledger", "Asset", "Current Asset"),
+        (1101, "Input VAT", "Asset", "Current Asset"),
+        (1102, "Undeposited Funds", "Asset", "Current Asset"),
+        (1200, "Stock Asset", "Asset", "Stock Asset"),
+        (1201, "Stock Asset (Back Order)", "Asset", "Stock Asset"),
+        (1300, "Bank Account", "Asset", "Bank Account"),
+        
+        # Liabilities (2000-2999)
+        (2100, "Purchase Ledger", "Liability", "Current Liability"),
+        (2101, "Output VAT", "Liability", "Current Liability"),
+        (2102, "VAT Ledger", "Liability", "Current Liability"),
+        (2103, "Other creditors", "Liability", "Current Liability"),
+        (2104, "NI & PAYE Liability", "Liability", "Current Liability"),
+        (2200, "Directors Loan Account", "Liability", "Current Liability"),
+        
+        # Equity (3000-3999)
+        (3000, "Opening Balances", "Equity", "Equity"),
+        (3100, "Retained Earnings", "Equity", "Equity"),
+        
+        # Income (4000-4999)
+        (4000, "Sales (Products)", "Income", "Turnover"),
+        (4100, "Sales (Services)", "Income", "Turnover"),
+        (4200, "Stock Adjustment (Gain)", "Income", "Other Income"),
+        (4300, "Purchase Cost Differences", "Income", "Other Income"),
+        
+        # Expenses (5000-5999)
+        (5000, "Cost of Sales", "Expense", "Cost of Sales"),
+        (5100, "Stock Adjustment (Loss)", "Expense", "Expenses"),
+        (5200, "Salary", "Expense", "Expenses"),
+        (5300, "Employer NI", "Expense", "Expenses"),
+        (5400, "Employee Payroll", "Expense", "Expenses"),
+        (5500, "Back Orders", "Expense", "Expenses"),
+        
+        # Additional standard UK small business accounts
+        # Assets
+        (1400, "Petty Cash", "Asset", "Cash Account"),
+        (1500, "Prepayments", "Asset", "Prepayments"),
+        (1600, "Fixed Assets", "Asset", "Fixed Asset"),
+        
+        # Liabilities
+        (2300, "Long Term Loans", "Liability", "Long-Term Liability"),
+        (2400, "Accruals", "Liability", "Current Liability"),
+        
+        # Income
+        (4400, "Discounts Received", "Income", "Other Income"),
+        (4500, "Interest Received", "Income", "Other Operating Income"),
+        
+        # Expenses
+        (5600, "Rent", "Expense", "Expenses"),
+        (5700, "Utilities", "Expense", "Expenses"),
+        (5800, "Insurance", "Expense", "Expenses"),
+        (5900, "Professional Fees", "Expense", "Expenses"),
+        (5950, "Travel & Subsistence", "Expense", "Expenses"),
+        (5960, "Office Expenses", "Expense", "Expenses"),
+        (5970, "Depreciation", "Expense", "Depreciation"),
+        (5980, "Discounts Allowed", "Expense", "Expenses"),
+        (5990, "Bad Debts", "Expense", "Expenses"),
+    ]
+    
+    created_count = 0
+    failed_count = 0
+    
+    for code, name, category, subtype in accounts:
+        # Determine is_bank_account based on category and subtype
+        is_bank = (category == "Asset" and subtype == "Bank Account")
+        
+        success, message, account_id = nominal_account_model.create(
+            account_code=code,
+            account_name=name,
+            account_type=category,
+            account_subtype=subtype,
+            opening_balance=0.0,
+            is_bank_account=is_bank,
+            user_id=user_id
+        )
+        
+        if success:
+            created_count += 1
+        else:
+            failed_count += 1
+            print(f"  Warning: Failed to create account '{name}': {message}")
+    
+    return created_count
+
+
 def create_test_user(user_model: User, username: str = "test", password: str = "test") -> Tuple[bool, str, Optional[int]]:
     """
     Create a single test user.
@@ -251,6 +350,11 @@ def main():
         else:
             print(f"  ✗ Failed to create test user: {message}")
             sys.exit(1)
+        
+        # Create default chart of accounts
+        print("\nCreating default chart of accounts...")
+        account_count = create_default_chart_of_accounts(models['nominal_account'], user_id)
+        print(f"  ✓ Created {account_count} accounts")
         
         print("\n" + "=" * 60)
         print("✓ Database cleared and test user created successfully!")

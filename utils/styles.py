@@ -7,7 +7,7 @@ class AppStyles:
     """Centralized application styles."""
     
     # Font families
-    FONT_FAMILY = '"Tahoma", "Arial", sans-serif'
+    FONT_FAMILY = '"Helvetica", sans-serif'
     
     # Font sizes
     FONT_SIZE_TINY = "9px"
@@ -21,9 +21,9 @@ class AppStyles:
     # Colors
     COLOR_TEXT = "#000000"
     COLOR_TEXT_GRAY = "#808080"
-    COLOR_ERROR = "red"
-    COLOR_SUCCESS = "green"
-    COLOR_PLACEHOLDER = "gray"
+    COLOR_ERROR = "#800000"
+    COLOR_SUCCESS = "#008000"
+    COLOR_PLACEHOLDER = "#808080"
     
     # Spacing
     SPACING_TINY = "5px"
@@ -71,12 +71,12 @@ class AppStyles:
 
 def load_theme_stylesheet() -> str:
     """
-    Load the Windows XP theme stylesheet from file.
+    Load the retro theme stylesheet from file.
     
     Returns:
         The stylesheet content as a string, or empty string if file not found
     """
-    stylesheet_path = Path(__file__).parent.parent / "styles" / "xp_theme.qss"
+    stylesheet_path = Path(__file__).parent.parent / "styles" / "retro_theme.qss"
     if stylesheet_path.exists():
         with open(stylesheet_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -85,7 +85,7 @@ def load_theme_stylesheet() -> str:
 
 def apply_theme(widget) -> None:
     """
-    Apply the Windows XP theme to a widget (window, dialog, etc.).
+    Apply the retro theme to a widget (window, dialog, etc.).
     
     Args:
         widget: The widget to apply the theme to

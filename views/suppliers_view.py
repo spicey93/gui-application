@@ -3499,21 +3499,22 @@ class SuppliersView(BaseTabbedView):
         
         invoices_table = QTableWidget()
         invoices_table.setColumnCount(5)
-        invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Outstanding", "Amount to Allocate", ""])
+        invoices_table.setHorizontalHeaderLabels(["", "Invoice #", "Date", "Outstanding", "Amount to Allocate"])
         invoices_table.horizontalHeader().setStretchLastSection(True)
         header = invoices_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
-        invoices_table.setColumnWidth(4, 100)  # "Fill" button column
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        invoices_table.setColumnWidth(0, 40)  # Checkbox column
         invoices_table.setAlternatingRowColors(True)
         invoices_table.setRowCount(len(invoices))
         invoices_table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.SelectedClicked)
         
         invoice_data = []
         allocation_spinboxes = []
+        allocation_checkboxes = []
         
         # Create summary label first (needed by update function)
         summary_label = QLabel("")
@@ -3550,7 +3551,7 @@ class SuppliersView(BaseTabbedView):
             
             summary_label.setText(summary_text)
         
-        # Now create the table rows with spinboxes
+        # Now create the table rows with checkboxes and spinboxes
         for row, invoice in enumerate(invoices):
             invoice_data.append({
                 'id': invoice['id'],
@@ -3559,20 +3560,10 @@ class SuppliersView(BaseTabbedView):
                 'outstanding': invoice['outstanding_balance']
             })
             
-            # Invoice number (read-only)
-            invoice_num_item = QTableWidgetItem(invoice['invoice_number'])
-            invoice_num_item.setFlags(invoice_num_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            invoices_table.setItem(row, 0, invoice_num_item)
-            
-            # Date (read-only)
-            date_item = QTableWidgetItem(invoice['invoice_date'])
-            date_item.setFlags(date_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            invoices_table.setItem(row, 1, date_item)
-            
-            # Outstanding (read-only)
-            outstanding_item = QTableWidgetItem(f"£{invoice['outstanding_balance']:.2f}")
-            outstanding_item.setFlags(outstanding_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            invoices_table.setItem(row, 2, outstanding_item)
+            # Checkbox at the start of the row
+            checkbox = QCheckBox()
+            checkbox.setChecked(False)
+            allocation_checkboxes.append(checkbox)
             
             # Amount to allocate (editable spinbox)
             amount_spinbox = QDoubleSpinBox()
@@ -3582,17 +3573,65 @@ class SuppliersView(BaseTabbedView):
             amount_spinbox.setPrefix("£")
             amount_spinbox.setValue(0.0)
             amount_spinbox.setSingleStep(0.01)
-            amount_spinbox.valueChanged.connect(update_allocation_summary)
             allocation_spinboxes.append(amount_spinbox)
-            invoices_table.setCellWidget(row, 3, amount_spinbox)
             
-            # "Fill" button to set amount to outstanding balance
-            fill_btn = QPushButton("Fill")
-            fill_btn.setMaximumWidth(90)
-            fill_btn.clicked.connect(
-                lambda checked, sb=amount_spinbox, outstanding=invoice['outstanding_balance']: sb.setValue(outstanding)
-            )
-            invoices_table.setCellWidget(row, 4, fill_btn)
+            # Connect checkbox to spinbox: when checked, fill with outstanding balance
+            def make_checkbox_handler(cb, sb, outstanding_bal):
+                """Create a handler for checkbox state changes."""
+                def handler(checked):
+                    # Temporarily block spinbox signals to prevent circular updates
+                    sb.blockSignals(True)
+                    if checked:
+                        sb.setValue(outstanding_bal)
+                    else:
+                        sb.setValue(0.0)
+                    sb.blockSignals(False)
+                    # Manually trigger update since we blocked signals
+                    update_allocation_summary()
+                return handler
+            
+            checkbox.stateChanged.connect(make_checkbox_handler(checkbox, amount_spinbox, invoice['outstanding_balance']))
+            
+            # Connect spinbox to checkbox: when value changes, update checkbox state
+            def make_spinbox_handler(cb, sb, outstanding_bal):
+                """Create a handler for spinbox value changes."""
+                def handler(value):
+                    # Update checkbox state based on spinbox value
+                    # Check if value equals outstanding (within tolerance) or is 0
+                    cb.blockSignals(True)
+                    if abs(value - outstanding_bal) < 0.01:
+                        cb.setChecked(True)
+                    elif abs(value) < 0.01:
+                        cb.setChecked(False)
+                    else:
+                        # Partial amount - uncheck checkbox
+                        cb.setChecked(False)
+                    cb.blockSignals(False)
+                    update_allocation_summary()
+                return handler
+            
+            amount_spinbox.valueChanged.connect(make_spinbox_handler(checkbox, amount_spinbox, invoice['outstanding_balance']))
+            
+            # Set checkbox in column 0
+            invoices_table.setCellWidget(row, 0, checkbox)
+            
+            # Invoice number (read-only) - column 1
+            invoice_num_item = QTableWidgetItem(invoice['invoice_number'])
+            invoice_num_item.setFlags(invoice_num_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            invoices_table.setItem(row, 1, invoice_num_item)
+            
+            # Date (read-only) - column 2
+            date_item = QTableWidgetItem(invoice['invoice_date'])
+            date_item.setFlags(date_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            invoices_table.setItem(row, 2, date_item)
+            
+            # Outstanding (read-only) - column 3
+            outstanding_item = QTableWidgetItem(f"£{invoice['outstanding_balance']:.2f}")
+            outstanding_item.setFlags(outstanding_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            invoices_table.setItem(row, 3, outstanding_item)
+            
+            # Amount to allocate spinbox - column 4
+            invoices_table.setCellWidget(row, 4, amount_spinbox)
         
         layout.addWidget(invoices_table, stretch=1)
         

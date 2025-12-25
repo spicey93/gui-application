@@ -62,12 +62,14 @@ class BookkeeperController(QObject):
         self.refresh_accounts()
     
     def handle_create_account(self, account_code: int, account_name: str, 
-                              account_type: str, opening_balance: float, 
+                              account_category: str, account_subtype: str,
                               is_bank_account: bool):
         """Handle create account."""
+        # Opening balance defaults to 0.0
+        opening_balance = 0.0
         success, message, account_id = self.nominal_account_model.create(
-            account_code, account_name, account_type, opening_balance, 
-            is_bank_account, self.user_id
+            account_code, account_name, account_category, account_subtype,
+            opening_balance, is_bank_account, self.user_id
         )
         
         if success:
@@ -77,12 +79,16 @@ class BookkeeperController(QObject):
             self.bookkeeper_view.show_error_dialog(message)
     
     def handle_update_account(self, account_id: int, account_code: int, 
-                             account_name: str, account_type: str, 
-                             opening_balance: float, is_bank_account: bool):
+                             account_name: str, account_category: str,
+                             account_subtype: str, is_bank_account: bool):
         """Handle update account."""
+        # Get existing account to preserve opening balance
+        existing_account = self.nominal_account_model.get_by_id(account_id, self.user_id)
+        opening_balance = existing_account.get('opening_balance', 0.0) if existing_account else 0.0
+        
         success, message = self.nominal_account_model.update(
-            account_id, account_code, account_name, account_type, 
-            opening_balance, is_bank_account, self.user_id
+            account_id, account_code, account_name, account_category,
+            account_subtype, opening_balance, is_bank_account, self.user_id
         )
         
         if success:
