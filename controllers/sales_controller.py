@@ -1,6 +1,14 @@
 """Sales controller."""
 from typing import TYPE_CHECKING, Optional, List, Dict
 from PySide6.QtCore import QObject, Signal
+from datetime import datetime
+from utils.transaction_logger import TransactionLogger
+from utils.account_finder import (
+    find_trade_debtors_account,
+    find_sales_account,
+    find_bank_account,
+    find_undeposited_funds_account
+)
 
 if TYPE_CHECKING:
     from views.sales_view import SalesView
@@ -61,6 +69,7 @@ class SalesController(QObject):
         self.service_model = service_model
         self.vehicle_model = vehicle_model
         self.user_id = user_id
+        self.transaction_logger = TransactionLogger(sales_invoice_model.db_path)
         
         # Connect view signals to controller handlers
         self.sales_view.dashboard_requested.connect(self.handle_dashboard)
@@ -257,6 +266,11 @@ class SalesController(QObject):
         )
         
         if success:
+            # Log transaction to journal entries
+            self._log_sales_invoice_item_transaction(
+                sales_invoice_id, internal_product_id, internal_service_id,
+                description, quantity, unit_price
+            )
             self.sales_view.show_success_dialog(message)
             self.item_added.emit()
             self.refresh_documents()
@@ -310,6 +324,10 @@ class SalesController(QObject):
         )
         
         if success:
+            # Log transaction to journal entries
+            self._log_customer_payment_transaction(
+                internal_customer_id, payment_date, reference, payment_method, amount
+            )
             self.sales_view.show_success_dialog(message)
             self.payment_created.emit()
         else:
@@ -466,4 +484,153 @@ class SalesController(QObject):
     def handle_logout(self):
         """Handle logout."""
         self.logout_requested.emit()
+    
+    def _log_sales_invoice_item_transaction(self, sales_invoice_id: int, product_id: Optional[int],
+                                           service_id: Optional[int], description: str,
+                                           quantity: float, unit_price: float):
+        """
+        Log sales invoice item transaction to journal entries.
+        
+        Args:
+            sales_invoice_id: Sales invoice ID
+            product_id: Product ID (if product item)
+            service_id: Service ID (if service item)
+            description: Item description
+            quantity: Quantity
+            unit_price: Unit price
+        """
+        try:
+            # Get sales invoice details
+            invoice = self.sales_invoice_model.get_by_id(sales_invoice_id, self.user_id)
+            if not invoice:
+                return
+            
+            invoice_date_str = invoice.get('document_date')
+            invoice_number = invoice.get('document_number', '')
+            customer_id = invoice.get('customer_id')
+            
+            # Parse invoice date
+            try:
+                if isinstance(invoice_date_str, str):
+                    invoice_date = datetime.strptime(invoice_date_str, '%Y-%m-%d').date()
+                else:
+                    invoice_date = invoice_date_str
+            except (ValueError, AttributeError):
+                invoice_date = datetime.now().date()
+            
+            # Get customer name
+            import sqlite3
+            customer_name = 'Unknown Customer'
+            try:
+                with sqlite3.connect(self.sales_invoice_model.db_path, timeout=10.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name FROM customers WHERE id = ? AND user_id = ?", (customer_id, self.user_id))
+                    row = cursor.fetchone()
+                    if row:
+                        customer_name = row[0]
+            except Exception:
+                pass
+            
+            # Calculate amount (excluding VAT for now - we log the net amount)
+            amount = quantity * unit_price
+            
+            # Get nominal accounts
+            from models.nominal_account import NominalAccount
+            nominal_account_model = NominalAccount(self.sales_invoice_model.db_path)
+            
+            # Find Trade Debtors account (Asset - Current Asset)
+            debtor_account_id = find_trade_debtors_account(self.user_id, self.sales_invoice_model.db_path)
+            if not debtor_account_id:
+                # Account not found, skip logging (but don't fail the item creation)
+                return
+            
+            # Find Sales account (Income - Turnover)
+            sales_account_id = find_sales_account(self.user_id, self.sales_invoice_model.db_path)
+            if not sales_account_id:
+                # Account not found, skip logging (but don't fail the item creation)
+                return
+            
+            # Log the transaction
+            self.transaction_logger.log_sales_invoice_item(
+                user_id=self.user_id,
+                invoice_date=invoice_date,
+                invoice_number=invoice_number,
+                customer_name=customer_name,
+                sales_account_id=sales_account_id,
+                debtor_account_id=debtor_account_id,
+                amount=amount,
+                description=description
+            )
+        except Exception as e:
+            # Don't fail the item creation if logging fails
+            # Log error but continue
+            pass
+    
+    def _log_customer_payment_transaction(self, customer_id: int, payment_date: str,
+                                          payment_reference: str, payment_method: str, amount: float):
+        """
+        Log customer payment transaction to journal entries.
+        
+        Args:
+            customer_id: Internal customer ID
+            payment_date: Payment date (YYYY-MM-DD)
+            payment_reference: Payment reference
+            payment_method: Payment method (Cash, Card, Cheque, BACS)
+            amount: Payment amount
+        """
+        try:
+            # Parse payment date
+            try:
+                if isinstance(payment_date, str):
+                    payment_date_obj = datetime.strptime(payment_date, '%Y-%m-%d').date()
+                else:
+                    payment_date_obj = payment_date
+            except (ValueError, AttributeError):
+                payment_date_obj = datetime.now().date()
+            
+            # Get customer name
+            import sqlite3
+            customer_name = 'Unknown Customer'
+            try:
+                with sqlite3.connect(self.sales_invoice_model.db_path, timeout=10.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name FROM customers WHERE id = ? AND user_id = ?", (customer_id, self.user_id))
+                    row = cursor.fetchone()
+                    if row:
+                        customer_name = row[0]
+            except Exception:
+                pass
+            
+            # Find Trade Debtors account
+            debtor_account_id = find_trade_debtors_account(self.user_id, self.sales_invoice_model.db_path)
+            if not debtor_account_id:
+                return
+            
+            # Determine debit account based on payment method
+            # BACS goes directly to Bank, others go to Undeposited Funds
+            if payment_method == 'BACS':
+                debit_account_id = find_bank_account(self.user_id, self.sales_invoice_model.db_path)
+            else:
+                # Cash, Card, Cheque go to Undeposited Funds
+                debit_account_id = find_undeposited_funds_account(self.user_id, self.sales_invoice_model.db_path)
+            
+            if not debit_account_id:
+                # Account not found, skip logging
+                return
+            
+            # Log the transaction
+            self.transaction_logger.log_customer_payment(
+                user_id=self.user_id,
+                payment_date=payment_date_obj,
+                payment_reference=payment_reference or '',
+                customer_name=customer_name,
+                debit_account_id=debit_account_id,
+                debtor_account_id=debtor_account_id,
+                amount=amount
+            )
+        except Exception as e:
+            # Don't fail the payment creation if logging fails
+            pass
 

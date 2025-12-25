@@ -6,8 +6,8 @@ from typing import Dict, Optional
 class AppStyles:
     """Centralized application styles."""
     
-    # Font families
-    FONT_FAMILY = '"Helvetica", sans-serif'
+    # Font families - Windows XP style
+    FONT_FAMILY = '"Tahoma", "Arial", sans-serif'
     
     # Font sizes
     FONT_SIZE_TINY = "9px"
@@ -71,12 +71,12 @@ class AppStyles:
 
 def load_theme_stylesheet() -> str:
     """
-    Load the retro theme stylesheet from file.
+    Load the Windows XP theme stylesheet from file.
     
     Returns:
         The stylesheet content as a string, or empty string if file not found
     """
-    stylesheet_path = Path(__file__).parent.parent / "styles" / "retro_theme.qss"
+    stylesheet_path = Path(__file__).parent.parent / "styles" / "xp_theme.qss"
     if stylesheet_path.exists():
         with open(stylesheet_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -85,7 +85,7 @@ def load_theme_stylesheet() -> str:
 
 def apply_theme(widget) -> None:
     """
-    Apply the retro theme to a widget (window, dialog, etc.).
+    Apply the Windows XP theme to a widget (window, dialog, etc.).
     
     Args:
         widget: The widget to apply the theme to

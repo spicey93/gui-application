@@ -505,13 +505,20 @@ class ServicesView(BaseTabbedView):
         income_combo = QComboBox()
         income_combo.setStyleSheet("font-size: 12px;")
         income_combo.addItem("")  # Empty option
+        default_income_index = 0  # Default to empty option
         # Populate with Income type accounts
         if self.nominal_account_model and self._current_user_id:
             accounts = self.nominal_account_model.get_all(self._current_user_id)
             for account in accounts:
                 if account.get('account_type') == 'Income':
                     display_text = f"{account.get('account_code')} - {account.get('account_name')}"
-                    income_combo.addItem(display_text, account.get('id'))
+                    account_id = account.get('id')
+                    account_code = account.get('account_code')
+                    income_combo.addItem(display_text, account_id)
+                    # Default to account code 4100 if it exists
+                    if account_code == 4100:
+                        default_income_index = income_combo.count() - 1
+        income_combo.setCurrentIndex(default_income_index)
         income_layout.addWidget(income_combo, stretch=1)
         layout.addLayout(income_layout)
         

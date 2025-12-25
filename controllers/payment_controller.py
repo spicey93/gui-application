@@ -1,6 +1,13 @@
 """Payment controller."""
 from typing import TYPE_CHECKING, Optional, List, Dict
 from PySide6.QtCore import QObject, Signal
+from datetime import datetime
+from utils.transaction_logger import TransactionLogger
+from utils.account_finder import (
+    find_trade_creditors_account,
+    find_bank_account,
+    find_undeposited_funds_account
+)
 
 if TYPE_CHECKING:
     from models.payment import Payment
@@ -26,6 +33,7 @@ class PaymentController(QObject):
         self.payment_allocation_model = payment_allocation_model
         self.invoice_model = invoice_model
         self.user_id = user_id
+        self.transaction_logger = TransactionLogger(payment_model.db_path)
     
     def set_user_id(self, user_id: int):
         """Update the user ID."""
@@ -60,6 +68,10 @@ class PaymentController(QObject):
         )
         
         if success:
+            # Log transaction to journal entries
+            self._log_supplier_payment_transaction(
+                internal_supplier_id, payment_date, reference, payment_method, amount
+            )
             self.payment_created.emit()
         
         return success, message, payment_id
@@ -243,4 +255,71 @@ class PaymentController(QObject):
         # Filter to only invoices with outstanding balance > 0 (exclude fully allocated invoices)
         # Use a small epsilon to account for floating point precision
         return [inv for inv in invoices if inv['outstanding_balance'] > 0.01]
+    
+    def _log_supplier_payment_transaction(self, supplier_id: int, payment_date: str,
+                                          payment_reference: str, payment_method: str, amount: float):
+        """
+        Log supplier payment transaction to journal entries.
+        
+        Args:
+            supplier_id: Internal supplier ID
+            payment_date: Payment date (YYYY-MM-DD)
+            payment_reference: Payment reference
+            payment_method: Payment method (Cash, Card, Cheque, BACS)
+            amount: Payment amount
+        """
+        try:
+            # Parse payment date
+            try:
+                if isinstance(payment_date, str):
+                    payment_date_obj = datetime.strptime(payment_date, '%Y-%m-%d').date()
+                else:
+                    payment_date_obj = payment_date
+            except (ValueError, AttributeError):
+                payment_date_obj = datetime.now().date()
+            
+            # Get supplier name
+            import sqlite3
+            supplier_name = 'Unknown Supplier'
+            try:
+                with sqlite3.connect(self.payment_model.db_path, timeout=10.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT name FROM suppliers WHERE id = ? AND user_id = ?", (supplier_id, self.user_id))
+                    row = cursor.fetchone()
+                    if row:
+                        supplier_name = row[0]
+            except Exception:
+                pass
+            
+            # Find Trade Creditors account
+            creditor_account_id = find_trade_creditors_account(self.user_id, self.payment_model.db_path)
+            if not creditor_account_id:
+                return
+            
+            # Determine credit account based on payment method
+            # BACS goes directly from Bank, others go from Undeposited Funds
+            if payment_method == 'BACS':
+                credit_account_id = find_bank_account(self.user_id, self.payment_model.db_path)
+            else:
+                # Cash, Card, Cheque come from Undeposited Funds
+                credit_account_id = find_undeposited_funds_account(self.user_id, self.payment_model.db_path)
+            
+            if not credit_account_id:
+                # Account not found, skip logging
+                return
+            
+            # Log the transaction
+            self.transaction_logger.log_supplier_payment(
+                user_id=self.user_id,
+                payment_date=payment_date_obj,
+                payment_reference=payment_reference or '',
+                supplier_name=supplier_name,
+                creditor_account_id=creditor_account_id,
+                credit_account_id=credit_account_id,
+                amount=amount
+            )
+        except Exception as e:
+            # Don't fail the payment creation if logging fails
+            pass
 

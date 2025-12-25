@@ -40,6 +40,7 @@ class BookkeeperView(BaseTabbedView):
     transfer_funds_requested = Signal(int, int, float, str, str, str)  # from_account_id, to_account_id, amount, description, date_str, reference
     transfer_accounts_requested = Signal()  # Request accounts for transfer dialog
     refresh_requested = Signal()
+    reports_requested = Signal()  # Request to open reports dialog
     
     def __init__(self):
         """Initialize the bookkeeper view."""
@@ -65,6 +66,13 @@ class BookkeeperView(BaseTabbedView):
             "Transfer Funds (Ctrl+T)",
             self._handle_transfer_funds,
             None  # No shortcut here - handled by main window
+        )
+        
+        # Reports button
+        self.reports_button = self.add_action_button(
+            "Reports",
+            self._handle_reports,
+            None
         )
         
         # Create tabs widget
@@ -113,20 +121,28 @@ class BookkeeperView(BaseTabbedView):
         
         # Activity table
         self.activity_table = QTableWidget()
-        self.activity_table.setColumnCount(6)
-        self.activity_table.setHorizontalHeaderLabels(["Date", "Description", "Debit", "Credit", "Balance", "Ref"])
-        self.activity_table.horizontalHeader().setStretchLastSection(True)
+        self.activity_table.setColumnCount(8)
+        self.activity_table.setHorizontalHeaderLabels(["Date", "Type", "Journal No", "Reference", "Stakeholder", "Description", "Debit", "Credit"])
+        self.activity_table.horizontalHeader().setStretchLastSection(False)
         self.activity_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.activity_table.setAlternatingRowColors(True)
         self.activity_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
         # Set column widths
         activity_header = self.activity_table.horizontalHeader()
-        activity_header.resizeSection(0, 100)
-        activity_header.resizeSection(1, 200)
-        activity_header.resizeSection(2, 100)
-        activity_header.resizeSection(3, 100)
-        activity_header.resizeSection(4, 100)
+        activity_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        activity_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        activity_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
+        activity_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        activity_header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        activity_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        activity_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
+        activity_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
+        activity_header.resizeSection(0, 100)  # Date
+        activity_header.resizeSection(1, 120)  # Type
+        activity_header.resizeSection(2, 100)  # Journal No
+        activity_header.resizeSection(6, 100)  # Debit
+        activity_header.resizeSection(7, 100)  # Credit
         
         activity_layout.addWidget(self.activity_table, stretch=1)
         
@@ -752,13 +768,8 @@ class BookkeeperView(BaseTabbedView):
             self._on_account_selection_changed()
     
     def load_activity(self, entries: List[Dict[str, any]], account_id: int):
-        """Load journal entries into the activity table."""
+        """Load transaction entries into the activity table."""
         self.activity_table.setRowCount(len(entries))
-        
-        running_balance = 0.0
-        
-        # Get account type to determine balance calculation direction
-        # This will be passed from controller or calculated here
         
         for row, entry in enumerate(entries):
             # Date
@@ -769,8 +780,24 @@ class BookkeeperView(BaseTabbedView):
                 date_str = str(entry_date)
             self.activity_table.setItem(row, 0, QTableWidgetItem(date_str))
             
+            # Type
+            transaction_type = entry.get('transaction_type', 'Journal Entry')
+            self.activity_table.setItem(row, 1, QTableWidgetItem(transaction_type))
+            
+            # Journal No
+            journal_number = entry.get('journal_number', '')
+            self.activity_table.setItem(row, 2, QTableWidgetItem(journal_number if journal_number else ""))
+            
+            # Reference
+            ref = entry.get('reference', '')
+            self.activity_table.setItem(row, 3, QTableWidgetItem(ref if ref else ""))
+            
+            # Stakeholder
+            stakeholder = entry.get('stakeholder', '')
+            self.activity_table.setItem(row, 4, QTableWidgetItem(stakeholder if stakeholder else ""))
+            
             # Description
-            self.activity_table.setItem(row, 1, QTableWidgetItem(entry.get('description', '')))
+            self.activity_table.setItem(row, 5, QTableWidgetItem(entry.get('description', '')))
             
             # Debit/Credit
             amount = entry.get('amount', 0.0)
@@ -780,33 +807,13 @@ class BookkeeperView(BaseTabbedView):
             if is_debit:
                 debit_item = QTableWidgetItem(f"£{amount:,.2f}")
                 debit_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self.activity_table.setItem(row, 2, debit_item)
-                self.activity_table.setItem(row, 3, QTableWidgetItem(""))
-                running_balance += amount  # Simplified - actual depends on account type
+                self.activity_table.setItem(row, 6, debit_item)
+                self.activity_table.setItem(row, 7, QTableWidgetItem(""))
             elif is_credit:
-                self.activity_table.setItem(row, 2, QTableWidgetItem(""))
+                self.activity_table.setItem(row, 6, QTableWidgetItem(""))
                 credit_item = QTableWidgetItem(f"£{amount:,.2f}")
                 credit_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self.activity_table.setItem(row, 3, credit_item)
-                running_balance -= amount  # Simplified - actual depends on account type
-            
-            # Balance (running balance)
-            balance_item = QTableWidgetItem(f"£{running_balance:,.2f}")
-            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.activity_table.setItem(row, 4, balance_item)
-            
-            # Reference
-            ref = entry.get('reference', '')
-            self.activity_table.setItem(row, 5, QTableWidgetItem(ref if ref else ""))
-        
-        # Resize columns
-        self.activity_table.resizeColumnsToContents()
-        activity_header = self.activity_table.horizontalHeader()
-        activity_header.resizeSection(0, 100)
-        activity_header.resizeSection(1, 200)
-        activity_header.resizeSection(2, 100)
-        activity_header.resizeSection(3, 100)
-        activity_header.resizeSection(4, 100)
+                self.activity_table.setItem(row, 7, credit_item)
     
     def populate_transfer_accounts(self, accounts: List[Dict[str, any]], from_combo: QComboBox, to_combo: QComboBox):
         """Populate account combos in transfer dialog."""
@@ -825,4 +832,8 @@ class BookkeeperView(BaseTabbedView):
     def show_error_dialog(self, message: str):
         """Show an error dialog."""
         QMessageBox.critical(self, "Error", message)
+    
+    def _handle_reports(self):
+        """Handle Reports button click - open reports dialog."""
+        self.reports_requested.emit()
 

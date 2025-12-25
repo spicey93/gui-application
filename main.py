@@ -65,7 +65,7 @@ class Application(QMainWindow):
         self.setGeometry(100, 100, 400, 250)
         self.setMinimumSize(400, 250)
         
-        # Load modern theme
+        # Load Windows XP theme
         self._load_theme()
         
         # Initialize models
@@ -160,7 +160,7 @@ class Application(QMainWindow):
         self._setup_shortcuts()
     
     def _load_theme(self):
-        """Load modern theme stylesheet."""
+        """Load Windows XP theme stylesheet."""
         apply_theme(self)
     
     def _center_window(self):
@@ -603,6 +603,9 @@ class Application(QMainWindow):
         else:
             self.configuration_controller.set_user_id(user_id)
         
+        # Update dashboard controller with user_id
+        self.dashboard_controller.set_user_id(user_id)
+        
         # Update window for dashboard - maximize to full screen
         self.setWindowTitle("Dashboard")
         self.setMinimumSize(800, 600)
@@ -750,6 +753,10 @@ class Application(QMainWindow):
 
 def main():
     """Initialize and run the application."""
+    import os
+    # Suppress macOS IMK warning messages
+    os.environ['QT_LOGGING_RULES'] = '*.debug=false'
+    
     app = QApplication(sys.argv)
     
     # Set application properties

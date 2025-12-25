@@ -1,5 +1,5 @@
 """Book Keeper controller."""
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List, Dict
 from PySide6.QtCore import QObject, Signal
 from datetime import date
 
@@ -52,6 +52,7 @@ class BookkeeperController(QObject):
         self.bookkeeper_view.transfer_funds_requested.connect(self.handle_transfer_funds)
         self.bookkeeper_view.transfer_accounts_requested.connect(self.handle_populate_transfer_accounts)
         self.bookkeeper_view.refresh_requested.connect(self.handle_refresh_activity)
+        self.bookkeeper_view.reports_requested.connect(self.handle_reports)
         
         # Load initial accounts
         self.refresh_accounts()
@@ -134,7 +135,9 @@ class BookkeeperController(QObject):
         # This represents money moving FROM from_account TO to_account
         success, message, entry_id = self.journal_entry_model.create(
             entry_date, description, to_account_id, from_account_id, 
-            amount, reference, self.user_id
+            amount, reference, self.user_id,
+            transaction_type="Transfer",
+            stakeholder=None
         )
         
         if success:
@@ -146,41 +149,48 @@ class BookkeeperController(QObject):
         else:
             self.bookkeeper_view.show_error_dialog(message)
     
+    def get_all_account_transactions(self, account_id: int) -> List[Dict]:
+        """
+        Get all transactions for an account from journal entries.
+        
+        This aggregates transactions from all sources (journal entries, sales invoices,
+        supplier invoices, payments, etc.) as they should all be recorded as journal entries.
+        
+        Args:
+            account_id: Account ID
+        
+        Returns:
+            List of transaction dictionaries with standard format
+        """
+        # Get journal entries (which should include all transaction types)
+        entries = self.journal_entry_model.get_account_entries(account_id, self.user_id)
+        
+        # Format entries for display - they already have the right structure
+        # Just ensure they have all required fields with defaults
+        formatted_entries = []
+        for entry in entries:
+            formatted_entry = {
+                'entry_date': entry.get('entry_date'),
+                'transaction_type': entry.get('transaction_type', 'Journal Entry'),
+                'journal_number': entry.get('journal_number', ''),
+                'reference': entry.get('reference', ''),
+                'stakeholder': entry.get('stakeholder', ''),
+                'description': entry.get('description', ''),
+                'amount': entry.get('amount', 0.0),
+                'is_debit': entry.get('is_debit', False),
+                'is_credit': entry.get('is_credit', False),
+            }
+            formatted_entries.append(formatted_entry)
+        
+        return formatted_entries
+    
     def handle_refresh_activity(self):
         """Handle refresh activity request."""
         if self.bookkeeper_view.selected_account_id:
             account_id = self.bookkeeper_view.selected_account_id
-            entries = self.journal_entry_model.get_account_entries(account_id, self.user_id)
+            entries = self.get_all_account_transactions(account_id)
             
-            # Get account info to determine balance calculation
-            account = self.nominal_account_model.get_by_id(account_id, self.user_id)
-            if account:
-                # Calculate running balance based on account type
-                opening_balance = account.get('opening_balance', 0.0)
-                account_type = account.get('account_type', '')
-                
-                # Calculate running balance for each entry
-                running_balance = opening_balance
-                for entry in entries:
-                    amount = entry.get('amount', 0.0)
-                    is_debit = entry.get('is_debit', False)
-                    
-                    # Assets and Expenses: Opening + Debits - Credits
-                    # Liabilities, Equity, Income: Opening + Credits - Debits
-                    if account_type in ['Asset', 'Expense']:
-                        if is_debit:
-                            running_balance += amount
-                        else:
-                            running_balance -= amount
-                    else:
-                        if is_debit:
-                            running_balance -= amount
-                        else:
-                            running_balance += amount
-                    
-                    entry['running_balance'] = running_balance
-                
-                self.bookkeeper_view.load_activity(entries, account_id)
+            self.bookkeeper_view.load_activity(entries, account_id)
     
     def refresh_accounts(self):
         """Refresh the accounts list."""
@@ -231,4 +241,29 @@ class BookkeeperController(QObject):
         """Get accounts list for transfer dialog."""
         accounts = self.nominal_account_model.get_all(self.user_id)
         return accounts
+    
+    def handle_reports(self):
+        """Handle reports request - open reports dialog."""
+        from views.reports_dialog import ReportsDialog
+        from controllers.reports_controller import ReportsController
+        
+        # Create reports dialog
+        reports_dialog = ReportsDialog(self.bookkeeper_view)
+        
+        # Create temporary reports controller for the dialog
+        reports_controller = ReportsController(
+            reports_dialog,
+            self.nominal_account_model,
+            self.journal_entry_model,
+            self.user_id
+        )
+        
+        # Connect dialog signals to controller
+        reports_dialog.generate_vat_return_requested.connect(reports_controller.handle_generate_vat_return)
+        reports_dialog.generate_profit_loss_requested.connect(reports_controller.handle_generate_profit_loss)
+        reports_dialog.generate_trial_balance_requested.connect(reports_controller.handle_generate_trial_balance)
+        reports_dialog.generate_balance_sheet_requested.connect(reports_controller.handle_generate_balance_sheet)
+        
+        # Show dialog
+        reports_dialog.exec()
 

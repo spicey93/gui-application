@@ -1420,21 +1420,37 @@ class SuppliersView(BaseTabbedView):
         # Store invoice items data
         invoice_items_data = []  # List of dicts: {stock_number, description, quantity, unit_price, vat_code}
         
-        # Add Item button
-        def open_add_item_dialog():
-            """Open add item dialog with current supplier selection."""
+        # Add Product button
+        def open_add_product_dialog():
+            """Open add product dialog with current supplier selection."""
             current_supplier_id = supplier_combo.currentData()
             if current_supplier_id is None:
                 current_supplier_id = supplier_id  # Fallback to original
             self._add_invoice_item_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
         
-        add_item_btn = QPushButton("Add Item (Ctrl+I)")
-        add_item_btn.clicked.connect(open_add_item_dialog)
-        layout.addWidget(add_item_btn)
+        add_product_btn = QPushButton("Add Product (Ctrl+P)")
+        add_product_btn.clicked.connect(open_add_product_dialog)
+        layout.addWidget(add_product_btn)
         
-        # Add Item shortcut
-        add_item_shortcut = QShortcut(QKeySequence("Ctrl+I"), dialog)
-        add_item_shortcut.activated.connect(open_add_item_dialog)
+        # Add Product shortcut
+        add_product_shortcut = QShortcut(QKeySequence("Ctrl+P"), dialog)
+        add_product_shortcut.activated.connect(open_add_product_dialog)
+        
+        # Add Expense button
+        def open_add_expense_dialog():
+            """Open add expense dialog with current supplier selection."""
+            current_supplier_id = supplier_combo.currentData()
+            if current_supplier_id is None:
+                current_supplier_id = supplier_id  # Fallback to original
+            self._add_invoice_expense_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
+        
+        add_expense_btn = QPushButton("Add Expense (Ctrl+E)")
+        add_expense_btn.clicked.connect(open_add_expense_dialog)
+        layout.addWidget(add_expense_btn)
+        
+        # Add Expense shortcut
+        add_expense_shortcut = QShortcut(QKeySequence("Ctrl+E"), dialog)
+        add_expense_shortcut.activated.connect(open_add_expense_dialog)
         
         # Totals
         totals_layout = QVBoxLayout()
@@ -1657,9 +1673,11 @@ class SuppliersView(BaseTabbedView):
                 
                 # Get product_id from item (stored when adding to basket)
                 product_id = item.get('product_id')
+                # Get nominal_account_id from item (for expense lines)
+                nominal_account_id = item.get('nominal_account_id')
                 
                 self.invoice_controller.add_invoice_item(
-                    invoice_id, product_id, stock_num, desc, qty, price, vat_code
+                    invoice_id, product_id, stock_num, desc, qty, price, vat_code, nominal_account_id
                 )
             
             QMessageBox.information(dialog, "Success", "Invoice created successfully")
@@ -2498,6 +2516,184 @@ class SuppliersView(BaseTabbedView):
         
         dialog.exec()
     
+    def _add_invoice_expense_dialog(self, parent_dialog: QDialog, items_table: QTableWidget, supplier_id: int, update_totals_callback=None, invoice_items_data=None, update_table=None, edit_item=None, edit_row=None):
+        """Dialog for adding expense lines to invoice."""
+        dialog = QDialog(parent_dialog)
+        if edit_item is not None:
+            dialog.setWindowTitle("Edit Expense Line")
+        else:
+            dialog.setWindowTitle("Add Expense Line")
+        dialog.setModal(True)
+        dialog.setMinimumSize(500, 400)
+        dialog.resize(500, 400)
+        apply_theme(dialog)
+        
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+        
+        # Title
+        title_label = QLabel("Add Expense Line" if edit_item is None else "Edit Expense Line")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(title_label)
+        
+        # Nominal Account dropdown
+        account_layout = QHBoxLayout()
+        account_label = QLabel("Nominal Account:")
+        account_label.setMinimumWidth(150)
+        account_layout.addWidget(account_label)
+        account_combo = QComboBox()
+        account_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        # Load expense accounts
+        from models.nominal_account import NominalAccount
+        if hasattr(self, '_current_user_id') and self._current_user_id:
+            nominal_account_model = NominalAccount()
+            all_accounts = nominal_account_model.get_all(self._current_user_id)
+            # Filter to expense accounts
+            expense_accounts = [acc for acc in all_accounts if acc.get('account_type') == 'Expense']
+            for account in expense_accounts:
+                display_text = f"{account.get('account_code', '')} - {account.get('account_name', '')}"
+                account_combo.addItem(display_text, account['id'])
+        
+        account_layout.addWidget(account_combo, stretch=1)
+        layout.addLayout(account_layout)
+        
+        # Description
+        desc_layout = QHBoxLayout()
+        desc_label = QLabel("Description:")
+        desc_label.setMinimumWidth(150)
+        desc_layout.addWidget(desc_label)
+        desc_entry = QLineEdit()
+        desc_entry.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        if edit_item:
+            desc_entry.setText(edit_item.get('description', ''))
+        desc_layout.addWidget(desc_entry, stretch=1)
+        layout.addLayout(desc_layout)
+        
+        # Amount
+        amount_layout = QHBoxLayout()
+        amount_label = QLabel("Amount:")
+        amount_label.setMinimumWidth(150)
+        amount_layout.addWidget(amount_label)
+        amount_spin = QDoubleSpinBox()
+        amount_spin.setMinimum(0.01)
+        amount_spin.setMaximum(999999.99)
+        amount_spin.setDecimals(2)
+        amount_spin.setPrefix("£")
+        amount_spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        if edit_item:
+            # For expenses, amount is the line_total (quantity is typically 1, unit_price is the amount)
+            amount_spin.setValue(edit_item.get('unit_price', 0.0))
+        amount_layout.addWidget(amount_spin, stretch=1)
+        layout.addLayout(amount_layout)
+        
+        # VAT Code
+        vat_layout = QHBoxLayout()
+        vat_label = QLabel("VAT Code:")
+        vat_label.setMinimumWidth(150)
+        vat_layout.addWidget(vat_label)
+        vat_combo = QComboBox()
+        vat_combo.addItems(['S', 'E', 'Z'])
+        vat_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        if edit_item:
+            vat_combo.setCurrentText(edit_item.get('vat_code', 'S'))
+        vat_layout.addWidget(vat_combo)
+        vat_layout.addStretch()
+        layout.addLayout(vat_layout)
+        
+        # Reference
+        ref_layout = QHBoxLayout()
+        ref_label = QLabel("Reference:")
+        ref_label.setMinimumWidth(150)
+        ref_layout.addWidget(ref_label)
+        ref_entry = QLineEdit()
+        ref_entry.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        if edit_item:
+            ref_entry.setText(edit_item.get('reference', ''))
+        ref_layout.addWidget(ref_entry, stretch=1)
+        layout.addLayout(ref_layout)
+        
+        layout.addStretch()
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        def handle_save():
+            """Save expense line."""
+            if account_combo.currentData() is None:
+                QMessageBox.warning(dialog, "Error", "Please select a nominal account")
+                return
+            
+            if not desc_entry.text().strip():
+                QMessageBox.warning(dialog, "Error", "Description is required")
+                return
+            
+            amount = amount_spin.value()
+            if amount <= 0:
+                QMessageBox.warning(dialog, "Error", "Amount must be greater than zero")
+                return
+            
+            # Create expense item
+            expense_item = {
+                'stock_number': 'EXP',  # Use 'EXP' as stock number for expenses
+                'description': desc_entry.text().strip(),
+                'quantity': 1.0,  # Expenses are typically quantity 1
+                'unit_price': amount,
+                'vat_code': vat_combo.currentText(),
+                'nominal_account_id': account_combo.currentData(),
+                'reference': ref_entry.text().strip(),
+                'product_id': None  # No product for expense lines
+            }
+            
+            if edit_item is not None and edit_row is not None:
+                # Update existing item
+                if 0 <= edit_row < len(invoice_items_data):
+                    invoice_items_data[edit_row] = expense_item
+            else:
+                # Add new item
+                invoice_items_data.append(expense_item)
+            
+            if update_table:
+                update_table()
+            if update_totals_callback:
+                update_totals_callback()
+            
+            dialog.accept()
+        
+        save_btn = QPushButton("Save (Ctrl+Enter)")
+        save_btn.setMinimumWidth(120)
+        save_btn.setDefault(True)
+        save_btn.clicked.connect(handle_save)
+        button_layout.addWidget(save_btn)
+        
+        cancel_btn = QPushButton("Cancel (Esc)")
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.clicked.connect(dialog.reject)
+        button_layout.addWidget(cancel_btn)
+        
+        layout.addLayout(button_layout)
+        
+        # Shortcuts
+        from PySide6.QtGui import QShortcut, QKeySequence
+        enter_shortcut = QShortcut(QKeySequence("Ctrl+Return"), dialog)
+        enter_shortcut.activated.connect(handle_save)
+        esc_shortcut = QShortcut(QKeySequence("Escape"), dialog)
+        esc_shortcut.activated.connect(dialog.reject)
+        
+        # Set focus
+        if edit_item and account_combo.count() > 0:
+            # Try to find and select the existing account
+            nominal_account_id = edit_item.get('nominal_account_id')
+            for i in range(account_combo.count()):
+                if account_combo.itemData(i) == nominal_account_id:
+                    account_combo.setCurrentIndex(i)
+                    break
+        account_combo.setFocus()
+        
+        dialog.exec()
+    
     def _view_payment_allocations_dialog(self, parent_dialog: QDialog, supplier_id: int, payment_id: int):
         """View and manage payment allocations dialog."""
         if not self.payment_controller:
@@ -2829,9 +3025,9 @@ class SuppliersView(BaseTabbedView):
                     current_supplier_id = supplier_id
                 self._add_invoice_item_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table, edit_item=item_to_edit, edit_row=row)
         
-        # Add Item button (disabled if has allocations)
-        def open_add_item_dialog():
-            """Open add item dialog with current supplier selection."""
+        # Add Product button (disabled if has allocations)
+        def open_add_product_dialog():
+            """Open add product dialog with current supplier selection."""
             if has_allocations:
                 return
             current_supplier_id = supplier_combo.currentData()
@@ -2839,15 +3035,35 @@ class SuppliersView(BaseTabbedView):
                 current_supplier_id = supplier_id
             self._add_invoice_item_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
         
-        add_item_btn = QPushButton("Add Item (Ctrl+I)")
-        add_item_btn.setEnabled(not has_allocations)
-        add_item_btn.clicked.connect(open_add_item_dialog)
-        layout.addWidget(add_item_btn)
+        add_product_btn = QPushButton("Add Product (Ctrl+P)")
+        add_product_btn.setEnabled(not has_allocations)
+        add_product_btn.clicked.connect(open_add_product_dialog)
+        layout.addWidget(add_product_btn)
         
-        # Add Item shortcut (disabled if has allocations)
-        add_item_shortcut = QShortcut(QKeySequence("Ctrl+I"), dialog)
+        # Add Product shortcut (disabled if has allocations)
+        add_product_shortcut = QShortcut(QKeySequence("Ctrl+P"), dialog)
         if not has_allocations:
-            add_item_shortcut.activated.connect(open_add_item_dialog)
+            add_product_shortcut.activated.connect(open_add_product_dialog)
+        
+        # Add Expense button (disabled if has allocations)
+        def open_add_expense_dialog():
+            """Open add expense dialog with current supplier selection."""
+            if has_allocations:
+                return
+            current_supplier_id = supplier_combo.currentData()
+            if current_supplier_id is None:
+                current_supplier_id = supplier_id
+            self._add_invoice_expense_dialog(dialog, items_table, current_supplier_id, update_totals, invoice_items_data=invoice_items_data, update_table=update_invoice_table)
+        
+        add_expense_btn = QPushButton("Add Expense (Ctrl+E)")
+        add_expense_btn.setEnabled(not has_allocations)
+        add_expense_btn.clicked.connect(open_add_expense_dialog)
+        layout.addWidget(add_expense_btn)
+        
+        # Add Expense shortcut (disabled if has allocations)
+        add_expense_shortcut = QShortcut(QKeySequence("Ctrl+E"), dialog)
+        if not has_allocations:
+            add_expense_shortcut.activated.connect(open_add_expense_dialog)
         
         # Totals
         totals_layout = QVBoxLayout()
@@ -3095,15 +3311,17 @@ class SuppliersView(BaseTabbedView):
                         existing_item.get('vat_code', 'S') != vat_code):
                         # Item changed - delete old (reverses stock) and add new
                         self.invoice_controller.delete_invoice_item(item_id)
+                        nominal_account_id = item.get('nominal_account_id')
                         self.invoice_controller.add_invoice_item(
-                            invoice_id, product_id, stock_num, desc, qty, price, vat_code
+                            invoice_id, product_id, stock_num, desc, qty, price, vat_code, nominal_account_id
                         )
                     # If unchanged, do nothing
                 else:
                     # New item - add it
                     vat_code = item.get('vat_code', 'S')
+                    nominal_account_id = item.get('nominal_account_id')
                     self.invoice_controller.add_invoice_item(
-                        invoice_id, product_id, stock_num, desc, qty, price, vat_code
+                        invoice_id, product_id, stock_num, desc, qty, price, vat_code, nominal_account_id
                     )
             
             # Calculate subtotal for manual VAT override

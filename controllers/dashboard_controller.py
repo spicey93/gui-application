@@ -1,6 +1,10 @@
 """Dashboard controller."""
 from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, Signal
+from datetime import datetime, date
+from utils.transaction_logger import TransactionLogger
+from utils.account_finder import find_bank_account, find_undeposited_funds_account
+from models.journal_entry import JournalEntry
 
 if TYPE_CHECKING:
     from views.dashboard_view import DashboardView
@@ -21,10 +25,14 @@ class DashboardController(QObject):
     sales_requested = Signal()
     configuration_requested = Signal()
     
-    def __init__(self, dashboard_view: "DashboardView"):
+    def __init__(self, dashboard_view: "DashboardView", user_id: int = None, db_path: str = "data/app.db"):
         """Initialize the dashboard controller."""
         super().__init__()
         self.dashboard_view = dashboard_view
+        self.user_id = user_id
+        self.db_path = db_path
+        self.transaction_logger = TransactionLogger(db_path)
+        self.journal_entry_model = JournalEntry(db_path)
         
         # Connect view signals to controller
         self.dashboard_view.logout_requested.connect(self.handle_logout)
@@ -37,6 +45,11 @@ class DashboardController(QObject):
         self.dashboard_view.services_requested.connect(self.handle_services)
         self.dashboard_view.sales_requested.connect(self.handle_sales)
         self.dashboard_view.configuration_requested.connect(self.handle_configuration)
+        self.dashboard_view.cash_up_requested.connect(self.handle_cash_up)
+    
+    def set_user_id(self, user_id: int):
+        """Update the user ID."""
+        self.user_id = user_id
     
     def handle_logout(self):
         """Handle logout."""
@@ -77,3 +90,88 @@ class DashboardController(QObject):
     def handle_configuration(self):
         """Handle configuration navigation."""
         self.configuration_requested.emit()
+    
+    def handle_cash_up(self, start_date_str: str, end_date_str: str):
+        """Handle cash up request - move card payments from Undeposited Funds to Bank."""
+        if not self.user_id:
+            self.dashboard_view.show_error_dialog("User not logged in")
+            return
+        
+        try:
+            start_date = date.fromisoformat(start_date_str)
+            end_date = date.fromisoformat(end_date_str)
+        except (ValueError, AttributeError):
+            self.dashboard_view.show_error_dialog("Invalid date format")
+            return
+        
+        # Find accounts
+        bank_account_id = find_bank_account(self.user_id, self.db_path)
+        undeposited_funds_id = find_undeposited_funds_account(self.user_id, self.db_path)
+        
+        if not bank_account_id:
+            self.dashboard_view.show_error_dialog("Bank account not found. Please create a Bank Account in Book Keeper.")
+            return
+        
+        if not undeposited_funds_id:
+            self.dashboard_view.show_error_dialog("Undeposited Funds account not found. Please create an Undeposited Funds account in Book Keeper.")
+            return
+        
+        # Get card payments in date range from journal entries
+        # Look for Customer Payment entries with Card payment method
+        import sqlite3
+        try:
+            with sqlite3.connect(self.db_path, timeout=10.0) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Get customer payments in date range with Card payment method
+                cursor.execute("""
+                    SELECT cp.id, cp.amount, cp.payment_date, cp.reference, c.name as customer_name
+                    FROM customer_payments cp
+                    JOIN customers c ON cp.customer_id = c.id
+                    WHERE cp.user_id = ? 
+                    AND cp.payment_method = 'Card'
+                    AND cp.payment_date >= ? 
+                    AND cp.payment_date <= ?
+                    ORDER BY cp.payment_date
+                """, (self.user_id, start_date_str, end_date_str))
+                
+                payments = cursor.fetchall()
+                
+                if not payments:
+                    self.dashboard_view.show_success_dialog(f"No card payments found for the selected date range ({start_date_str} to {end_date_str}).")
+                    return
+                
+                # Calculate total amount
+                total_amount = sum(p['amount'] for p in payments)
+                
+                # Check if journal entries already exist for these payments (to avoid duplicates)
+                # We'll create a single journal entry for the total amount
+                # Debit Bank, Credit Undeposited Funds
+                today = date.today()
+                description = f"Cash Up - Card payments from {start_date_str} to {end_date_str}"
+                reference = f"CASHUP-{today.strftime('%Y%m%d')}"
+                
+                success, message, entry_id = self.journal_entry_model.create(
+                    entry_date=today,
+                    description=description,
+                    debit_account_id=bank_account_id,
+                    credit_account_id=undeposited_funds_id,
+                    amount=total_amount,
+                    reference=reference,
+                    user_id=self.user_id,
+                    transaction_type="Cash Up",
+                    stakeholder=None
+                )
+                
+                if success:
+                    self.dashboard_view.show_success_dialog(
+                        f"Cash Up completed successfully.\n"
+                        f"Moved £{total_amount:,.2f} from Undeposited Funds to Bank account.\n"
+                        f"Date range: {start_date_str} to {end_date_str}\n"
+                        f"Number of payments: {len(payments)}"
+                    )
+                else:
+                    self.dashboard_view.show_error_dialog(f"Error completing cash up: {message}")
+        except Exception as e:
+            self.dashboard_view.show_error_dialog(f"Error processing cash up: {str(e)}")
