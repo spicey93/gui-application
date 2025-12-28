@@ -369,3 +369,4 @@ class ReportsView(BaseTabbedView):
         """Show an error dialog."""
         QMessageBox.critical(self, "Error", message)
 
+

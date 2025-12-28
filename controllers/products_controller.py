@@ -49,6 +49,7 @@ class ProductsController(QObject):
         self.products_view.create_tyre_requested.connect(self.handle_create_tyre)
         self.products_view.update_requested.connect(self.handle_update)
         self.products_view.update_tyre_requested.connect(self.handle_update_tyre)
+        self.products_view.update_asset_account_requested.connect(self.handle_update_asset_account)
         self.products_view.delete_requested.connect(self.handle_delete)
         self.products_view.refresh_requested.connect(self.refresh_products)
         self.products_view.add_product_type_requested.connect(self.handle_add_product_type)
@@ -190,6 +191,33 @@ class ProductsController(QObject):
         if success:
             self.products_view.show_success_dialog(message)
             self.refresh_products()
+        else:
+            self.products_view.show_error_dialog(message)
+    
+    def handle_update_asset_account(self, product_id: int, asset_account_id: int):
+        """Handle update product asset account."""
+        # Get current product to update with asset_account_id
+        product = self.product_model.get_by_id(product_id, self.user_id)
+        if not product:
+            self.products_view.show_error_dialog("Product not found")
+            return
+        
+        # Update only the asset_account_id field
+        success, message = self.product_model.update(
+            product_id,
+            product.get('stock_number', ''),
+            product.get('description', ''),
+            product.get('type', ''),
+            self.user_id,
+            asset_account_id=asset_account_id
+        )
+        
+        if success:
+            # Refresh to show updated account
+            self.refresh_products()
+            # Refresh product details if on details tab
+            if hasattr(self.products_view, 'selected_product_id') and self.products_view.selected_product_id == product_id:
+                self.handle_get_product_details(product_id)
         else:
             self.products_view.show_error_dialog(message)
     

@@ -76,7 +76,7 @@ def load_theme_stylesheet() -> str:
     Returns:
         The stylesheet content as a string, or empty string if file not found
     """
-    stylesheet_path = Path(__file__).parent.parent / "styles" / "xp_theme.qss"
+    stylesheet_path = Path(__file__).parent.parent / "styles" / "retro_theme.qss"
     if stylesheet_path.exists():
         with open(stylesheet_path, "r", encoding="utf-8") as f:
             return f.read()

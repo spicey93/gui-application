@@ -162,3 +162,83 @@ def find_undeposited_funds_account(user_id: int, db_path: str = "data/app.db") -
     
     return None
 
+
+def find_stock_asset_account(user_id: int, db_path: str = "data/app.db") -> Optional[int]:
+    """
+    Find Stock Asset account (Asset - Current Asset or Stock).
+    
+    Args:
+        user_id: User ID
+        db_path: Database path
+        
+    Returns:
+        Account ID or None if not found
+    """
+    nominal_account_model = NominalAccount(db_path)
+    accounts = nominal_account_model.get_all(user_id)
+    
+    for account in accounts:
+        account_type = account.get('account_type', '')
+        account_subtype = account.get('account_subtype', '')
+        account_name = account.get('account_name', '').lower()
+        
+        # Look for Stock Asset account
+        if account_type == 'Asset':
+            if 'stock' in account_name or 'inventory' in account_name:
+                return account['id']
+    
+    # Fallback: return first Current Asset account
+    for account in accounts:
+        if account.get('account_type') == 'Asset' and account.get('account_subtype') == 'Current Asset':
+            return account['id']
+    
+    return None
+
+
+def find_sales_products_account(user_id: int, db_path: str = "data/app.db") -> Optional[int]:
+    """
+    Find Sales (Products) account (Income - Turnover).
+    
+    Args:
+        user_id: User ID
+        db_path: Database path
+        
+    Returns:
+        Account ID or None if not found
+    """
+    # This is essentially the same as find_sales_account, but with product-specific naming
+    return find_sales_account(user_id, db_path)
+
+
+def find_cost_of_sales_account(user_id: int, db_path: str = "data/app.db") -> Optional[int]:
+    """
+    Find Cost of Sales account (Expense - Cost of Sales).
+    
+    Args:
+        user_id: User ID
+        db_path: Database path
+        
+    Returns:
+        Account ID or None if not found
+    """
+    nominal_account_model = NominalAccount(db_path)
+    accounts = nominal_account_model.get_all(user_id)
+    
+    for account in accounts:
+        account_type = account.get('account_type', '')
+        account_subtype = account.get('account_subtype', '')
+        account_name = account.get('account_name', '').lower()
+        
+        # Look for Cost of Sales account
+        if account_type == 'Expense' and account_subtype == 'Cost of Sales':
+            if 'cost' in account_name or 'sales' in account_name or 'cogs' in account_name:
+                return account['id']
+    
+    # Fallback: return first Cost of Sales account
+    for account in accounts:
+        if account.get('account_type') == 'Expense' and account.get('account_subtype') == 'Cost of Sales':
+            return account['id']
+    
+    return None
+
+

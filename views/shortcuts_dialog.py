@@ -50,6 +50,7 @@ class ShortcutsDialog(QDialog):
         <b>F8</b> - Navigate to Vehicles<br>
         <b>F9</b> - Navigate to Book Keeper<br>
         <b>F10</b> - Navigate to Configuration<br>
+        <b>Ctrl+U</b> - Cash Up (from Dashboard)<br>
         <b>Ctrl+Q</b> - Exit application<br><br>
         
         <b>Standard Navigation:</b><br><br>

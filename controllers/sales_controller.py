@@ -133,11 +133,7 @@ class SalesController(QObject):
         vehicle_id = wizard_data.get('vehicle_id')
         items = wizard_data.get('items', [])
         
-        # customer_id from wizard is already internal_id
-        if not customer_id:
-            self.sales_view.show_error_dialog("Customer ID is required")
-            return
-        
+        # customer_id from wizard is already internal_id (can be None)
         internal_customer_id = customer_id
         
         # Create document (document number will be auto-generated)

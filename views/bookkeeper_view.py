@@ -86,8 +86,8 @@ class BookkeeperView(BaseTabbedView):
         
         # Accounts table
         self.accounts_table = AccountsTableWidget(self._switch_to_activity_tab)
-        self.accounts_table.setColumnCount(3)
-        self.accounts_table.setHorizontalHeaderLabels(["Code", "Name", "Account Type"])
+        self.accounts_table.setColumnCount(4)
+        self.accounts_table.setHorizontalHeaderLabels(["Code", "Name", "Category", "Type"])
         self.accounts_table.horizontalHeader().setStretchLastSection(True)
         self.accounts_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.accounts_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
@@ -99,6 +99,7 @@ class BookkeeperView(BaseTabbedView):
         header.resizeSection(0, 100)
         header.resizeSection(1, 250)
         header.resizeSection(2, 120)
+        header.resizeSection(3, 150)
         
         # Enable keyboard navigation
         self.accounts_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -226,11 +227,8 @@ class BookkeeperView(BaseTabbedView):
         account_id = self.accounts_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         account_code = self.accounts_table.item(row, 0).text()
         account_name = self.accounts_table.item(row, 1).text()
-        account_type = self.accounts_table.item(row, 2).text()
-        
-        # Get subtype from stored account data
-        account_data = self._accounts_data.get(account_id, {})
-        account_subtype = account_data.get('account_subtype')
+        account_type = self.accounts_table.item(row, 2).text()  # Category
+        account_subtype = self.accounts_table.item(row, 3).text()  # Type
         
         self._show_account_details(account_id, account_code, account_name, account_type, account_subtype)
     
@@ -749,7 +747,10 @@ class BookkeeperView(BaseTabbedView):
             self.accounts_table.setItem(row, 0, code_item)
             
             self.accounts_table.setItem(row, 1, QTableWidgetItem(account.get('account_name', '')))
+            # Category column (account_type)
             self.accounts_table.setItem(row, 2, QTableWidgetItem(account.get('account_type', '')))
+            # Type column (account_subtype)
+            self.accounts_table.setItem(row, 3, QTableWidgetItem(account.get('account_subtype', '')))
         
         # Resize columns to content
         self.accounts_table.resizeColumnsToContents()
@@ -757,6 +758,7 @@ class BookkeeperView(BaseTabbedView):
         header.resizeSection(0, 100)
         header.resizeSection(1, 250)
         header.resizeSection(2, 120)
+        header.resizeSection(3, 150)
         
         # Auto-select first row and set focus to table if data exists
         if len(accounts) > 0:

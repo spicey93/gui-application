@@ -299,6 +299,23 @@ class Product:
                         except sqlite3.OperationalError:
                             # Column might already exist or there's a constraint issue
                             pass
+                
+                # Add product management columns if they don't exist
+                product_columns = [
+                    ('product_group', 'TEXT'),
+                    ('reorder_pattern', 'TEXT'),
+                    ('asset_account_id', 'INTEGER'),
+                    ('income_account_id', 'INTEGER'),
+                    ('cost_account_id', 'INTEGER')
+                ]
+                
+                for col_name, col_def in product_columns:
+                    if col_name not in column_names:
+                        try:
+                            cursor.execute(f"ALTER TABLE products ADD COLUMN {col_name} {col_def}")
+                        except sqlite3.OperationalError:
+                            # Column might already exist or there's a constraint issue
+                            pass
             
             # Clean up orphaned products
             try:
@@ -528,6 +545,7 @@ class Product:
                 SELECT 
                     id as internal_id,
                     COALESCE(user_product_id, id) as id,
+                    user_id,
                     stock_number, 
                     description,
                     type,
@@ -538,7 +556,9 @@ class Product:
                     tyre_diameter, tyre_speed_rating, tyre_load_index, tyre_oe_fitment,
                     tyre_ean, tyre_manufacturer_code, tyre_vehicle_type, tyre_product_type,
                     tyre_rolling_resistance, tyre_wet_grip, tyre_noise_class, tyre_noise_performance,
-                    tyre_run_flat, tyre_url, tyre_brand_url
+                    tyre_run_flat, tyre_url, tyre_brand_url,
+                    product_group, reorder_pattern,
+                    asset_account_id, income_account_id, cost_account_id
                 FROM products 
                 WHERE user_product_id = ? AND user_id = ?
             """, (product_id, user_id))
@@ -575,7 +595,8 @@ class Product:
         tyre_noise_performance: Optional[str] = None,
         tyre_run_flat: Optional[str] = None,
         tyre_url: Optional[str] = None,
-        tyre_brand_url: Optional[str] = None
+        tyre_brand_url: Optional[str] = None,
+        asset_account_id: Optional[int] = None
     ) -> Tuple[bool, str]:
         """
         Update a product by user_product_id.
@@ -629,6 +650,11 @@ class Product:
             # Build update query dynamically based on provided fields
             update_fields = ["stock_number = ?", "description = ?", "type = ?"]
             update_values = [stock_number, description, type]
+            
+            # Add asset_account_id if provided
+            if asset_account_id is not None:
+                update_fields.append("asset_account_id = ?")
+                update_values.append(asset_account_id)
             
             if is_tyre is not None:
                 update_fields.append("is_tyre = ?")

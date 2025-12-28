@@ -10,6 +10,12 @@ from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
 from utils.styles import apply_theme
 from utils.tyre_parser import extract_tyre_specs, validate_tyre_description
+from utils.account_finder import (
+    find_stock_asset_account,
+    find_sales_products_account,
+    find_cost_of_sales_account
+)
+from models.nominal_account import NominalAccount
 
 
 class ProductsTableWidget(QTableWidget):
@@ -37,6 +43,7 @@ class ProductsView(BaseTabbedView):
     create_requested = Signal(str, str, str)
     create_tyre_requested = Signal(str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str)  # All tyre fields
     update_requested = Signal(int, str, str, str)
+    update_asset_account_requested = Signal(int, int)  # product_id, asset_account_id
     update_tyre_requested = Signal(int, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str, str)  # All tyre fields including noise
     delete_requested = Signal(int)
     refresh_requested = Signal()
@@ -189,16 +196,60 @@ class ProductsView(BaseTabbedView):
         
         # Store form widgets for later use
         self.product_details_id_label = QLabel("")
+        self.product_details_title_label = QLabel("")  # Title (read-only, derived from description)
         self.product_details_stock_entry = QLineEdit()
+        self.product_details_brand_label = QLabel("")
+        self.product_details_model_label = QLabel("")
+        self.product_details_group_label = QLabel("")
+        self.product_details_ean_label = QLabel("")
+        self.product_details_reorder_label = QLabel("")
+        self.product_details_manufacturer_code_label = QLabel("")
+        self.product_details_asset_account_combo = QComboBox()
+        self.product_details_asset_account_combo.setEditable(False)
+        self.product_details_income_account_label = QLabel("")
+        self.product_details_cost_account_label = QLabel("")
+        self.product_details_wet_grip_label = QLabel("")
         self.product_details_desc_entry = QLineEdit()
         self.product_details_type_combo = QComboBox()
         self.product_details_type_combo.setEditable(True)
         
-        # Add form rows
-        self._create_product_detail_row(details_form_layout, "ID:", self.product_details_id_label, read_only=True)
+        # Add form rows - Basic Information
+        title_section = QLabel("Basic Information")
+        title_section.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 10px;")
+        details_form_layout.addWidget(title_section)
+        
+        self._create_product_detail_row(details_form_layout, "Title:", self.product_details_title_label, read_only=True)
         self._create_product_detail_row(details_form_layout, "Stock Number:", self.product_details_stock_entry)
         self._create_product_detail_row(details_form_layout, "Description:", self.product_details_desc_entry)
         self._create_product_detail_row(details_form_layout, "Type:", self.product_details_type_combo)
+        
+        # Product Details Section
+        details_section = QLabel("Product Details")
+        details_section.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 10px;")
+        details_form_layout.addWidget(details_section)
+        
+        self._create_product_detail_row(details_form_layout, "Brand:", self.product_details_brand_label, read_only=True)
+        self._create_product_detail_row(details_form_layout, "Model:", self.product_details_model_label, read_only=True)
+        self._create_product_detail_row(details_form_layout, "Product Group:", self.product_details_group_label, read_only=True)
+        self._create_product_detail_row(details_form_layout, "EAN:", self.product_details_ean_label, read_only=True)
+        self._create_product_detail_row(details_form_layout, "Reorder Pattern:", self.product_details_reorder_label, read_only=True)
+        self._create_product_detail_row(details_form_layout, "Manufacturer Code:", self.product_details_manufacturer_code_label, read_only=True)
+        
+        # Account Information Section
+        account_section = QLabel("Account Information")
+        account_section.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 10px;")
+        details_form_layout.addWidget(account_section)
+        
+        self._create_product_detail_row(details_form_layout, "Asset Account:", self.product_details_asset_account_combo)
+        self._create_product_detail_row(details_form_layout, "Income Account:", self.product_details_income_account_label, read_only=True)
+        self._create_product_detail_row(details_form_layout, "Cost Account:", self.product_details_cost_account_label, read_only=True)
+        
+        # Additional Information Section
+        additional_section = QLabel("Additional Information")
+        additional_section.setStyleSheet("font-size: 14px; font-weight: bold; margin-top: 10px;")
+        details_form_layout.addWidget(additional_section)
+        
+        self._create_product_detail_row(details_form_layout, "Wet Grip:", self.product_details_wet_grip_label, read_only=True)
         
         # Buttons
         buttons_layout = QHBoxLayout()
@@ -305,6 +356,36 @@ class ProductsView(BaseTabbedView):
         """Show product details in the details tab."""
         self._update_product_details_tab(product, has_history)
     
+    def _get_account_name(self, account_id: Optional[int], user_id: Optional[int] = None, db_path: str = "data/app.db") -> str:
+        """Get account name by ID."""
+        if not account_id:
+            return ""
+        try:
+            account_model = NominalAccount(db_path)
+            if user_id:
+                account = account_model.get_by_id(account_id, user_id)
+            else:
+                # Try without user_id (for backward compatibility)
+                account = account_model.get_by_id(account_id, 1) if hasattr(account_model, 'get_by_id') else None
+            if account:
+                return f"{account.get('account_code', '')} - {account.get('account_name', '')}"
+        except Exception:
+            pass
+        return ""
+    
+    def _set_default_asset_account(self):
+        """Set default asset account to '1200 - Stock Asset' if available."""
+        # Try to find "1200 - Stock Asset"
+        for i in range(self.product_details_asset_account_combo.count()):
+            text = self.product_details_asset_account_combo.itemText(i)
+            if text.startswith("1200 -"):
+                self.product_details_asset_account_combo.setCurrentIndex(i)
+                return
+        
+        # If "1200 - Stock Asset" not found, select first item if available
+        if self.product_details_asset_account_combo.count() > 0:
+            self.product_details_asset_account_combo.setCurrentIndex(0)
+    
     def _update_product_details_tab(self, product: Dict[str, any], has_history: bool = False):
         """Update the details tab with selected product data."""
         if not product:
@@ -315,10 +396,18 @@ class ProductsView(BaseTabbedView):
         self.product_details_label.hide()
         self.product_details_form.show()
         
-        # Populate form fields
+        user_id = product.get('user_id')
+        db_path = getattr(self, 'db_path', 'data/app.db')
+        
+        # Populate form fields - Basic Information
         self.product_details_id_label.setText(str(product.get('id', '')))
+        
+        # Title (derived from description)
+        description = product.get('description', '')
+        self.product_details_title_label.setText(description or '')
+        
         self.product_details_stock_entry.setText(product.get('stock_number', ''))
-        self.product_details_desc_entry.setText(product.get('description', ''))
+        self.product_details_desc_entry.setText(description)
         
         # Populate type combo
         self.product_details_type_combo.clear()
@@ -332,6 +421,118 @@ class ProductsView(BaseTabbedView):
                 self.product_details_type_combo.setCurrentIndex(index)
             else:
                 self.product_details_type_combo.setCurrentText(product_type)
+        
+        # Product Details
+        brand = product.get('tyre_brand', '') or ''
+        model = product.get('tyre_model', '') or ''
+        product_group = product.get('product_group', '') or ''
+        ean = product.get('tyre_ean', '') or product.get('ean', '') or ''
+        reorder_pattern = product.get('reorder_pattern', '') or ''
+        manufacturer_code = product.get('tyre_manufacturer_code', '') or product.get('manufacturer_code', '') or ''
+        
+        self.product_details_brand_label.setText(brand)
+        self.product_details_model_label.setText(model)
+        self.product_details_group_label.setText(product_group)
+        self.product_details_ean_label.setText(ean)
+        self.product_details_reorder_label.setText(reorder_pattern)
+        self.product_details_manufacturer_code_label.setText(manufacturer_code)
+        
+        # Account Information - Populate asset account dropdown
+        asset_account_id = product.get('asset_account_id')
+        income_account_id = product.get('income_account_id')
+        cost_account_id = product.get('cost_account_id')
+        
+        # Populate asset account combo with stock asset accounts
+        self.product_details_asset_account_combo.clear()
+        if user_id:
+            account_model = NominalAccount(db_path)
+            all_accounts = account_model.get_all(user_id)
+            
+            # Filter for stock asset accounts (Asset type, typically Current Asset or Stock subtype)
+            # Also include accounts with "stock" or "inventory" in the name
+            # Exclude: Sales Ledger, Input VAT, Undeposited Funds
+            stock_asset_accounts = []
+            excluded_keywords = ['sales ledger', 'input vat', 'undeposited funds', 'undeposited']
+            excluded_codes = ['1300', '1350']  # Common codes for Sales Ledger and Input VAT
+            
+            for account in all_accounts:
+                account_type = account.get('account_type', '')
+                account_subtype = account.get('account_subtype', '')
+                account_name = account.get('account_name', '').lower()
+                account_code = account.get('account_code', '')
+                
+                # Skip excluded accounts
+                if any(keyword in account_name for keyword in excluded_keywords):
+                    continue
+                if account_code in excluded_codes:
+                    continue
+                
+                # Include if it's an Asset account and (has stock/inventory in name OR is Current Asset/Stock subtype)
+                if account_type == 'Asset':
+                    if ('stock' in account_name or 'inventory' in account_name or 
+                        account_subtype in ['Current Asset', 'Stock'] or
+                        account_code == '1200'):
+                        stock_asset_accounts.append(account)
+            
+            # Sort by account code
+            stock_asset_accounts.sort(key=lambda x: x.get('account_code', ''))
+            
+            # Add accounts to combo
+            for account in stock_asset_accounts:
+                account_code = account.get('account_code', '')
+                account_name = account.get('account_name', '')
+                display_text = f"{account_code} - {account_name}"
+                self.product_details_asset_account_combo.addItem(display_text, account.get('id'))
+            
+            # Set selected account or default to "1200 - Stock Asset"
+            if asset_account_id:
+                # Find and select the current asset account
+                index = self.product_details_asset_account_combo.findData(asset_account_id)
+                if index >= 0:
+                    self.product_details_asset_account_combo.setCurrentIndex(index)
+                else:
+                    # Account not in list, try to find "1200 - Stock Asset"
+                    self._set_default_asset_account()
+            else:
+                # No account set, default to "1200 - Stock Asset"
+                self._set_default_asset_account()
+        else:
+            # No user_id, can't populate accounts
+            self.product_details_asset_account_combo.addItem("No accounts available", None)
+        
+        if income_account_id:
+            income_account_name = self._get_account_name(income_account_id, user_id, db_path)
+            self.product_details_income_account_label.setText(income_account_name or 'Not set')
+        else:
+            # Show default
+            if user_id:
+                default_income_id = find_sales_products_account(user_id, db_path)
+                if default_income_id:
+                    default_name = self._get_account_name(default_income_id, user_id, db_path)
+                    self.product_details_income_account_label.setText(f"{default_name} (default)")
+                else:
+                    self.product_details_income_account_label.setText("Default Sales (Products) (not found)")
+            else:
+                self.product_details_income_account_label.setText("Default Sales (Products)")
+        
+        if cost_account_id:
+            cost_account_name = self._get_account_name(cost_account_id, user_id, db_path)
+            self.product_details_cost_account_label.setText(cost_account_name or 'Not set')
+        else:
+            # Show default
+            if user_id:
+                default_cost_id = find_cost_of_sales_account(user_id, db_path)
+                if default_cost_id:
+                    default_name = self._get_account_name(default_cost_id, user_id, db_path)
+                    self.product_details_cost_account_label.setText(f"{default_name} (default)")
+                else:
+                    self.product_details_cost_account_label.setText("Default Cost of Sales (not found)")
+            else:
+                self.product_details_cost_account_label.setText("Default Cost of Sales")
+        
+        # Additional Information
+        wet_grip = product.get('tyre_wet_grip', '') or ''
+        self.product_details_wet_grip_label.setText(wet_grip)
         
         # Enable/disable delete button based on history
         if has_history:
@@ -357,6 +558,9 @@ class ProductsView(BaseTabbedView):
         description = self.product_details_desc_entry.text().strip()
         product_type = self.product_details_type_combo.currentText().strip()
         
+        # Get selected asset account ID
+        asset_account_id = self.product_details_asset_account_combo.currentData()
+        
         # Check if it's a tyre product - if so, we need to use update_tyre_requested
         # For now, use standard update - controller can handle it
         self.update_requested.emit(
@@ -365,6 +569,10 @@ class ProductsView(BaseTabbedView):
             description,
             product_type
         )
+        
+        # Update asset account separately
+        if asset_account_id is not None:
+            self.update_asset_account_requested.emit(self.selected_product_id, asset_account_id)
     
     def _handle_delete_product_details(self):
         """Handle delete product button click from details tab."""

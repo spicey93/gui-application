@@ -65,7 +65,7 @@ class Application(QMainWindow):
         self.setGeometry(100, 100, 400, 250)
         self.setMinimumSize(400, 250)
         
-        # Load Windows XP theme
+        # Load retro theme
         self._load_theme()
         
         # Initialize models
@@ -160,7 +160,7 @@ class Application(QMainWindow):
         self._setup_shortcuts()
     
     def _load_theme(self):
-        """Load Windows XP theme stylesheet."""
+        """Load retro theme stylesheet."""
         apply_theme(self)
     
     def _center_window(self):
@@ -236,6 +236,11 @@ class Application(QMainWindow):
         self.shortcut_catalogue = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
         self.shortcut_catalogue.setContext(Qt.ShortcutContext.ApplicationShortcut)
         self.shortcut_catalogue.activated.connect(self._handle_catalogue_shortcut)
+        
+        # Ctrl+U: Cash Up (from Dashboard)
+        self.shortcut_cash_up = QShortcut(QKeySequence("Ctrl+U"), self)
+        self.shortcut_cash_up.setContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.shortcut_cash_up.activated.connect(self._handle_cash_up_shortcut)
         
         # Ctrl+Q: Exit application
         self.shortcut_quit = QShortcut(QKeySequence("Ctrl+Q"), self)
@@ -368,6 +373,14 @@ class Application(QMainWindow):
             current_index = self.stacked_widget.currentIndex()
             if current_index == self.products_index:
                 self.products_view._handle_view_catalogue()
+    
+    def _handle_cash_up_shortcut(self):
+        """Handle cash up keyboard shortcut (from Dashboard)."""
+        if self.current_user_id is not None:
+            current_index = self.stacked_widget.currentIndex()
+            if current_index == self.dashboard_index:
+                # Call the controller's handler directly
+                self.dashboard_controller.handle_cash_up_navigation()
     
     def _exit_application(self):
         """Exit the application with confirmation."""

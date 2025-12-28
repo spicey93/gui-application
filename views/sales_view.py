@@ -554,6 +554,11 @@ class SalesView(BaseTabbedView):
         """Show sales wizard dialog."""
         from views.sales_wizard import SalesWizardDialog
         
+        # Refresh products and services before opening wizard to ensure latest data is available
+        if hasattr(self, 'sales_controller') and self.sales_controller:
+            self.sales_controller.refresh_products()
+            self.sales_controller.refresh_services()
+        
         # Request vehicles from controller (will be empty for now)
         vehicles = []
         

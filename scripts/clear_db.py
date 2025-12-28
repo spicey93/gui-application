@@ -194,19 +194,19 @@ def create_default_chart_of_accounts(nominal_account_model: NominalAccount, user
     # Define accounts with: code, name, category, subtype
     accounts = [
         # Assets (1000-1999)
-        (1100, "Sales Ledger", "Asset", "Current Asset"),
-        (1101, "Input VAT", "Asset", "Current Asset"),
-        (1102, "Undeposited Funds", "Asset", "Current Asset"),
+        (1100, "Sales Ledger", "Asset", "Sales Ledger"),
+        (1102, "Undeposited Funds", "Asset", "Cash Account"),
         (1200, "Stock Asset", "Asset", "Stock Asset"),
         (1201, "Stock Asset (Back Order)", "Asset", "Stock Asset"),
         (1300, "Bank Account", "Asset", "Bank Account"),
         
         # Liabilities (2000-2999)
-        (2100, "Purchase Ledger", "Liability", "Current Liability"),
-        (2101, "Output VAT", "Liability", "Current Liability"),
-        (2102, "VAT Ledger", "Liability", "Current Liability"),
-        (2103, "Other creditors", "Liability", "Current Liability"),
-        (2104, "NI & PAYE Liability", "Liability", "Current Liability"),
+        (2100, "Purchase Ledger", "Liability", "Purchase Ledger"),
+        (2101, "Input VAT", "Liability", "Current Liability"),
+        (2102, "Output VAT", "Liability", "Current Liability"),
+        (2103, "VAT Ledger", "Liability", "VAT Ledger"),
+        (2104, "Other creditors", "Liability", "Current Liability"),
+        (2105, "NI & PAYE Liability", "Liability", "Current Liability"),
         (2200, "Directors Loan Account", "Liability", "Current Liability"),
         
         # Equity (3000-3999)

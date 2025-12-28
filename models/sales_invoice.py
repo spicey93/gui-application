@@ -38,7 +38,7 @@ class SalesInvoice:
                     CREATE TABLE sales_invoices (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         user_id INTEGER NOT NULL,
-                        customer_id INTEGER NOT NULL,
+                        customer_id INTEGER,
                         vehicle_id INTEGER,
                         document_number TEXT NOT NULL,
                         document_date DATE NOT NULL,
@@ -71,6 +71,68 @@ class SalesInvoice:
                             ON sales_invoices(vehicle_id)
                         """)
                     except sqlite3.OperationalError:
+                        pass
+                
+                # Migrate customer_id to allow NULL if needed
+                # SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+                # Check if we need to migrate by trying to read table info
+                cursor.execute("PRAGMA table_info(sales_invoices)")
+                column_info = cursor.fetchall()
+                customer_id_col = next((col for col in column_info if col[1] == 'customer_id'), None)
+                
+                # Check if customer_id is NOT NULL by examining the schema
+                cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='sales_invoices'")
+                schema = cursor.fetchone()
+                if schema and 'customer_id INTEGER NOT NULL' in schema[0]:
+                    # Need to migrate - recreate table with nullable customer_id
+                    try:
+                        # Create new table with nullable customer_id
+                        cursor.execute("""
+                            CREATE TABLE sales_invoices_new (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                user_id INTEGER NOT NULL,
+                                customer_id INTEGER,
+                                vehicle_id INTEGER,
+                                document_number TEXT NOT NULL,
+                                document_date DATE NOT NULL,
+                                document_type TEXT NOT NULL DEFAULT 'order',
+                                notes TEXT,
+                                subtotal REAL NOT NULL DEFAULT 0.0,
+                                vat_amount REAL NOT NULL DEFAULT 0.0,
+                                total REAL NOT NULL DEFAULT 0.0,
+                                status TEXT NOT NULL DEFAULT 'draft',
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                                FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+                                FOREIGN KEY (vehicle_id) REFERENCES vehicles(id),
+                                UNIQUE(user_id, document_number)
+                            )
+                        """)
+                        
+                        # Copy data (customer_id will be copied as-is, NULLs allowed)
+                        cursor.execute("""
+                            INSERT INTO sales_invoices_new 
+                            SELECT * FROM sales_invoices
+                        """)
+                        
+                        # Drop old table
+                        cursor.execute("DROP TABLE sales_invoices")
+                        
+                        # Rename new table
+                        cursor.execute("ALTER TABLE sales_invoices_new RENAME TO sales_invoices")
+                        
+                        # Recreate indexes
+                        try:
+                            cursor.execute("""
+                                CREATE INDEX IF NOT EXISTS idx_sales_invoice_vehicle 
+                                ON sales_invoices(vehicle_id)
+                            """)
+                        except sqlite3.OperationalError:
+                            pass
+                    except Exception:
+                        # Migration failed, but table exists - continue with existing schema
+                        # Application will need to handle this case
                         pass
             
             conn.commit()
@@ -135,14 +197,14 @@ class SalesInvoice:
             # Fallback to simple format
             return f"{prefix}001"
     
-    def create(self, customer_id: int, document_date: str, 
+    def create(self, customer_id: Optional[int], document_date: str, 
                document_type: str, notes: str, user_id: int,
                vehicle_id: Optional[int] = None, document_number: Optional[str] = None) -> Tuple[bool, str, Optional[int]]:
         """
         Create a new sales invoice.
         
         Args:
-            customer_id: Internal customer ID
+            customer_id: Internal customer ID (optional, can be None)
             document_date: Document date (YYYY-MM-DD format)
             document_type: Document type ('quote', 'order', 'invoice')
             notes: Notes text (optional)
@@ -159,8 +221,8 @@ class SalesInvoice:
         if document_type not in ['quote', 'order', 'invoice']:
             return False, "Document type must be 'quote', 'order', or 'invoice'", None
         
-        if not user_id or not customer_id:
-            return False, "User ID and customer ID are required", None
+        if not user_id:
+            return False, "User ID is required", None
         
         # Auto-generate document number if not provided
         if not document_number:

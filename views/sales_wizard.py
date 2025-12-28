@@ -106,7 +106,7 @@ class SalesWizardDialog(QDialog):
         layout.setSpacing(20)
         layout.setContentsMargins(20, 20, 20, 20)
         
-        title = QLabel("Step 1: Customer Details")
+        title = QLabel("Step 1: Customer Details (Optional)")
         title.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(title)
         
@@ -133,10 +133,10 @@ class SalesWizardDialog(QDialog):
         name_phone_layout = QHBoxLayout()
         name_phone_layout.setSpacing(15)
         
-        name_label = QLabel("Name*:")
+        name_label = QLabel("Name:")
         name_label.setMinimumWidth(80)
         self.customer_name_input = QLineEdit()
-        self.customer_name_input.setPlaceholderText("Enter customer name")
+        self.customer_name_input.setPlaceholderText("Enter customer name (optional)")
         name_phone_layout.addWidget(name_label)
         name_phone_layout.addWidget(self.customer_name_input, stretch=2)
         
@@ -946,11 +946,9 @@ class SalesWizardDialog(QDialog):
     def _validate_current_step(self) -> bool:
         """Validate current step before proceeding."""
         if self.current_step == 0:
-            # Customer details entry - name is required
-            if not self.customer_name_input.text().strip():
-                QMessageBox.warning(self, "Validation", "Customer name is required")
-                return False
-            # Customer will be created or found in final step if not already selected
+            # Customer details entry - optional, can skip
+            # Customer will be created or found in final step if details provided
+            pass
         elif self.current_step == 1:
             # Vehicle selection (optional, always valid)
             self.selected_vehicle_id = self.vehicle_combo.currentData()
@@ -965,10 +963,8 @@ class SalesWizardDialog(QDialog):
                 if reply == QMessageBox.StandardButton.No:
                     return False
         elif self.current_step == 3:
-            # Final step validation - ensure customer name is still present
-            if not self.customer_name_input.text().strip():
-                QMessageBox.warning(self, "Validation", "Customer name is required")
-                return False
+            # Final step validation - customer is optional
+            pass
         
         return True
     
@@ -985,16 +981,18 @@ class SalesWizardDialog(QDialog):
         if not self._validate_current_step():
             return
         
-        # Ensure customer exists or create it
+        # Ensure customer exists or create it if details provided
         customer_id = self.selected_customer_id
-        if not customer_id:
-            # Create customer from entered details
+        customer_name = self.customer_name_input.text().strip()
+        
+        if not customer_id and customer_name:
+            # Create customer from entered details if name is provided
             if not self.customer_model or not self.user_id:
                 QMessageBox.warning(self, "Error", "Cannot create customer: model or user ID not available")
                 return
             
             success, message = self.customer_model.create(
-                name=self.customer_name_input.text().strip(),
+                name=customer_name,
                 phone=self.customer_phone_input.text().strip(),
                 house_name_no=self.customer_house_input.text().strip(),
                 street_address=self.customer_street_input.text().strip(),
@@ -1015,18 +1013,19 @@ class SalesWizardDialog(QDialog):
             # Find the newly created customer's ID by searching
             customers = self.customer_model.search(
                 self.user_id,
-                name=self.customer_name_input.text().strip()
+                name=customer_name
             )
             
             # Find exact match
             for customer in customers:
-                if customer.get('name', '').strip() == self.customer_name_input.text().strip():
+                if customer.get('name', '').strip() == customer_name:
                     customer_id = customer.get('internal_id')
                     break
             
             if not customer_id:
                 QMessageBox.warning(self, "Error", "Customer was created but could not be found")
                 return
+        # If no customer_id and no name provided, customer_id will be None (optional)
         
         vehicle_id = self.selected_vehicle_id
         document_date = self.document_date_input.date().toString(Qt.DateFormat.ISODate)
