@@ -7,7 +7,10 @@ from utils.account_finder import (
     find_trade_debtors_account,
     find_sales_account,
     find_bank_account,
-    find_undeposited_funds_account
+    find_undeposited_funds_account,
+    find_vat_output_account,
+    find_cost_of_sales_account,
+    find_stock_asset_account
 )
 
 if TYPE_CHECKING:
@@ -265,7 +268,7 @@ class SalesController(QObject):
             # Log transaction to journal entries
             self._log_sales_invoice_item_transaction(
                 sales_invoice_id, internal_product_id, internal_service_id,
-                description, quantity, unit_price
+                description, quantity, unit_price, vat_code, item_id
             )
             self.sales_view.show_success_dialog(message)
             self.item_added.emit()
@@ -278,9 +281,49 @@ class SalesController(QObject):
     
     def handle_update_item(self, item_id: int, quantity: float, unit_price: float):
         """Handle update item."""
+        # Get old item data before update for reversal
+        import sqlite3
+        old_item_data = None
+        try:
+            with sqlite3.connect(self.sales_invoice_model.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT sales_invoice_id, product_id, service_id, description, quantity, unit_price, vat_code
+                    FROM sales_invoice_items WHERE id = ?
+                """, (item_id,))
+                result = cursor.fetchone()
+                if result:
+                    old_item_data = {
+                        'sales_invoice_id': result[0],
+                        'product_id': result[1],
+                        'service_id': result[2],
+                        'description': result[3],
+                        'quantity': result[4],
+                        'unit_price': result[5],
+                        'vat_code': result[6] or 'S'
+                    }
+        except Exception:
+            pass
+        
         success, message = self.sales_invoice_item_model.update(item_id, quantity, unit_price)
         
         if success:
+            if old_item_data:
+                # Reverse old journal entries
+                self._reverse_sales_invoice_item_entries(
+                    old_item_data['sales_invoice_id'], old_item_data['product_id'],
+                    old_item_data['service_id'], old_item_data['description'],
+                    old_item_data['quantity'], old_item_data['unit_price'],
+                    old_item_data['vat_code']
+                )
+                
+                # Create new journal entries with updated amounts
+                self._log_sales_invoice_item_transaction(
+                    old_item_data['sales_invoice_id'], old_item_data['product_id'],
+                    old_item_data['service_id'], old_item_data['description'],
+                    quantity, unit_price, old_item_data['vat_code'], item_id
+                )
+            
             self.sales_view.show_success_dialog(message)
             self.item_updated.emit()
             self.refresh_documents()
@@ -292,9 +335,42 @@ class SalesController(QObject):
     
     def handle_delete_item(self, item_id: int):
         """Handle delete item."""
+        # Get item data before deletion for reversal
+        import sqlite3
+        item_data = None
+        try:
+            with sqlite3.connect(self.sales_invoice_model.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT sales_invoice_id, product_id, service_id, description, quantity, unit_price, vat_code
+                    FROM sales_invoice_items WHERE id = ?
+                """, (item_id,))
+                result = cursor.fetchone()
+                if result:
+                    item_data = {
+                        'sales_invoice_id': result[0],
+                        'product_id': result[1],
+                        'service_id': result[2],
+                        'description': result[3],
+                        'quantity': result[4],
+                        'unit_price': result[5],
+                        'vat_code': result[6] or 'S'
+                    }
+        except Exception:
+            pass
+        
         success, message = self.sales_invoice_item_model.delete(item_id)
         
         if success:
+            if item_data:
+                # Reverse journal entries
+                self._reverse_sales_invoice_item_entries(
+                    item_data['sales_invoice_id'], item_data['product_id'],
+                    item_data['service_id'], item_data['description'],
+                    item_data['quantity'], item_data['unit_price'],
+                    item_data['vat_code']
+                )
+            
             self.sales_view.show_success_dialog(message)
             self.item_deleted.emit()
             self.refresh_documents()
@@ -303,6 +379,67 @@ class SalesController(QObject):
                 self.handle_document_selected(self.sales_view.selected_document_id)
         else:
             self.sales_view.show_error_dialog(message)
+    
+    def _reverse_sales_invoice_item_entries(self, sales_invoice_id: int, product_id: Optional[int],
+                                           service_id: Optional[int], description: str,
+                                           quantity: float, unit_price: float, vat_code: str):
+        """
+        Reverse journal entries for a sales invoice item.
+        
+        Args:
+            sales_invoice_id: Sales invoice ID
+            product_id: Product ID
+            service_id: Service ID
+            description: Item description
+            quantity: Quantity
+            unit_price: Unit price
+            vat_code: VAT code
+        """
+        try:
+            # Get sales invoice details
+            invoice = self.sales_invoice_model.get_by_id(sales_invoice_id, self.user_id)
+            if not invoice:
+                return
+            
+            invoice_number = invoice.get('document_number', '')
+            invoice_date_str = invoice.get('document_date')
+            
+            # Parse invoice date
+            try:
+                if isinstance(invoice_date_str, str):
+                    invoice_date = datetime.strptime(invoice_date_str, '%Y-%m-%d').date()
+                else:
+                    invoice_date = invoice_date_str
+            except (ValueError, AttributeError):
+                invoice_date = datetime.now().date()
+            
+            # Find entries to reverse by reference and description
+            entries_to_reverse = self.transaction_logger.find_entries_by_reference_and_description(
+                self.user_id, invoice_number, description
+            )
+            
+            # Also find VAT entries if applicable
+            if vat_code == 'S':
+                vat_entries = self.transaction_logger.find_entries_by_reference_and_description(
+                    self.user_id, invoice_number, f"VAT Output: {description}"
+                )
+                entries_to_reverse.extend(vat_entries)
+            
+            # Also find Cost of Sales entries if product
+            if product_id is not None:
+                cos_entries = self.transaction_logger.find_entries_by_reference_and_description(
+                    self.user_id, invoice_number, f"Cost of Sales: {description}"
+                )
+                entries_to_reverse.extend(cos_entries)
+            
+            # Reverse all found entries
+            for entry in entries_to_reverse:
+                self.transaction_logger.reverse_journal_entry(
+                    entry['id'], self.user_id, invoice_date, f"REV-{invoice_number}"
+                )
+        except Exception:
+            # Don't fail if reversal fails
+            pass
     
     def handle_create_payment(self, customer_id: int, payment_date: str, amount: float,
                              reference: str, payment_method: str):
@@ -483,7 +620,8 @@ class SalesController(QObject):
     
     def _log_sales_invoice_item_transaction(self, sales_invoice_id: int, product_id: Optional[int],
                                            service_id: Optional[int], description: str,
-                                           quantity: float, unit_price: float):
+                                           quantity: float, unit_price: float, vat_code: str = 'S',
+                                           item_id: Optional[int] = None):
         """
         Log sales invoice item transaction to journal entries.
         
@@ -494,6 +632,8 @@ class SalesController(QObject):
             description: Item description
             quantity: Quantity
             unit_price: Unit price
+            vat_code: VAT code (S, E, or Z)
+            item_id: Sales invoice item ID (optional, for getting VAT code if not provided)
         """
         try:
             # Get sales invoice details
@@ -528,7 +668,22 @@ class SalesController(QObject):
             except Exception:
                 pass
             
-            # Calculate amount (excluding VAT for now - we log the net amount)
+            # Get VAT code from item if not provided and item_id is available
+            if not vat_code and item_id:
+                try:
+                    import sqlite3
+                    with sqlite3.connect(self.sales_invoice_model.db_path, timeout=10.0) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT vat_code FROM sales_invoice_items WHERE id = ?", (item_id,))
+                        result = cursor.fetchone()
+                        if result:
+                            vat_code = result[0] or 'S'
+                except Exception:
+                    vat_code = 'S'
+            
+            vat_code = (vat_code or 'S').strip().upper()
+            
+            # Calculate amount (excluding VAT - we log the net amount)
             amount = quantity * unit_price
             
             # Get nominal accounts
@@ -547,7 +702,7 @@ class SalesController(QObject):
                 # Account not found, skip logging (but don't fail the item creation)
                 return
             
-            # Log the transaction
+            # Log the net sales transaction
             self.transaction_logger.log_sales_invoice_item(
                 user_id=self.user_id,
                 invoice_date=invoice_date,
@@ -558,6 +713,54 @@ class SalesController(QObject):
                 amount=amount,
                 description=description
             )
+            
+            # Log VAT Output if VAT code is 'S' (Standard rate 20%)
+            if vat_code == 'S':
+                vat_amount = amount * 0.20  # 20% VAT
+                vat_output_account_id = find_vat_output_account(self.user_id, self.sales_invoice_model.db_path)
+                if vat_output_account_id:
+                    self.transaction_logger.log_vat_output(
+                        user_id=self.user_id,
+                        invoice_date=invoice_date,
+                        invoice_number=invoice_number,
+                        customer_name=customer_name,
+                        debtor_account_id=debtor_account_id,
+                        vat_output_account_id=vat_output_account_id,
+                        vat_amount=vat_amount,
+                        description=description
+                    )
+            
+            # Log Cost of Sales if product is sold
+            if product_id is not None:
+                # Get product cost price (we'll use unit_price from invoice as cost for now)
+                # In a real system, products should have a cost_price field
+                # For now, we'll need to get it from the product or use a default
+                cost_of_sales_account_id = find_cost_of_sales_account(self.user_id, self.sales_invoice_model.db_path)
+                stock_account_id = find_stock_asset_account(self.user_id, self.sales_invoice_model.db_path)
+                
+                if cost_of_sales_account_id and stock_account_id:
+                    # Try to get cost price from product
+                    try:
+                        product_data = self.product_model.get_by_id(product_id, self.user_id)
+                        # For now, we'll use unit_price as cost (this should be improved to use actual cost_price)
+                        # If products have a cost_price field, use that instead
+                        cost_price = unit_price  # TODO: Get actual cost_price from product
+                        cost_amount = quantity * cost_price
+                    except Exception:
+                        # If we can't get product data, skip Cost of Sales logging
+                        cost_amount = 0.0
+                    
+                    if cost_amount > 0:
+                        self.transaction_logger.log_cost_of_sales(
+                            user_id=self.user_id,
+                            invoice_date=invoice_date,
+                            invoice_number=invoice_number,
+                            customer_name=customer_name,
+                            cost_of_sales_account_id=cost_of_sales_account_id,
+                            stock_account_id=stock_account_id,
+                            cost_amount=cost_amount,
+                            description=description
+                        )
         except Exception as e:
             # Don't fail the item creation if logging fails
             # Log error but continue

@@ -3,6 +3,11 @@ from typing import TYPE_CHECKING, Optional
 from PySide6.QtCore import QObject, Signal
 from datetime import datetime
 from utils.transaction_logger import TransactionLogger
+from utils.account_finder import (
+    find_trade_creditors_account,
+    find_stock_asset_account,
+    find_vat_input_account
+)
 
 if TYPE_CHECKING:
     from views.suppliers_view import SuppliersView
@@ -212,7 +217,7 @@ class InvoiceController(QObject):
         if success:
             # Log transaction to journal entries
             self._log_invoice_item_transaction(
-                invoice_id, product_id, nominal_account_id, description, quantity, unit_price
+                invoice_id, product_id, nominal_account_id, description, quantity, unit_price, vat_code, item_id
             )
             self.item_added.emit()
         
@@ -220,7 +225,8 @@ class InvoiceController(QObject):
     
     def _log_invoice_item_transaction(self, invoice_id: int, product_id: Optional[int],
                                      nominal_account_id: Optional[int], description: str,
-                                     quantity: float, unit_price: float):
+                                     quantity: float, unit_price: float, vat_code: str = 'S',
+                                     item_id: Optional[int] = None):
         """
         Log invoice item transaction to journal entries.
         
@@ -231,6 +237,8 @@ class InvoiceController(QObject):
             description: Item description
             quantity: Quantity
             unit_price: Unit price
+            vat_code: VAT code (S, E, or Z)
+            item_id: Invoice item ID (optional, for getting VAT code if not provided)
         """
         try:
             # Get invoice details
@@ -265,57 +273,58 @@ class InvoiceController(QObject):
             except Exception:
                 pass
             
-            # Calculate amount (excluding VAT for now - we log the net amount)
+            # Get VAT code from item if not provided and item_id is available
+            if not vat_code and item_id:
+                try:
+                    import sqlite3
+                    with sqlite3.connect(self.invoice_model.db_path, timeout=10.0) as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT vat_code FROM invoice_items WHERE id = ?", (item_id,))
+                        result = cursor.fetchone()
+                        if result:
+                            vat_code = result[0] or 'S'
+                except Exception:
+                    vat_code = 'S'
+            
+            vat_code = (vat_code or 'S').strip().upper()
+            
+            # Calculate amount (excluding VAT - we log the net amount)
             amount = quantity * unit_price
             
-            # Get nominal accounts
-            from models.nominal_account import NominalAccount
-            nominal_account_model = NominalAccount(self.invoice_model.db_path)
-            
-            # Find Trade Creditors account (Liability account - Current Liability)
-            all_accounts = nominal_account_model.get_all(self.user_id)
-            creditor_account_id = None
-            stock_account_id = None
-            
-            for account in all_accounts:
-                account_type = account.get('account_type', '')
-                account_subtype = account.get('account_subtype', '')
-                account_name = account.get('account_name', '').lower()
-                
-                # Find Trade Creditors (Liability - Current Liability)
-                if account_type == 'Liability' and account_subtype == 'Current Liability':
-                    # Look for account with "creditor" or "payable" in name, or use first Current Liability
-                    if 'creditor' in account_name or 'payable' in account_name:
-                        creditor_account_id = account['id']
-                        break
-                    elif creditor_account_id is None:
-                        # Use first Current Liability as fallback
-                        creditor_account_id = account['id']
-                
-                # Find Stock Asset account
-                if account_type == 'Asset' and account_subtype == 'Stock Asset':
-                    stock_account_id = account['id']
-            
-            # If accounts not found, skip logging (but don't fail the item creation)
+            # Find Trade Creditors account using utility function
+            creditor_account_id = find_trade_creditors_account(self.user_id, self.invoice_model.db_path)
             if not creditor_account_id:
+                # Account not found, skip logging (but don't fail the item creation)
+                # This means the invoice won't appear in the purchase ledger
+                # User should create a Trade Creditors/Purchase Ledger account (code 2100)
+                import logging
+                logging.warning(
+                    f"Trade Creditors/Purchase Ledger account not found for user {self.user_id}. "
+                    f"Journal entries not created for invoice item '{description}'. "
+                    f"Please create a Trade Creditors account (code 2100) in Bookkeeper."
+                )
                 return
             
             # Determine debit account
             if product_id is not None:
                 # Product item - debit Stock Asset
-                if stock_account_id:
-                    debit_account_id = stock_account_id
-                else:
+                stock_account_id = find_stock_asset_account(self.user_id, self.invoice_model.db_path)
+                if not stock_account_id:
                     # Stock account not found, skip logging
+                    import logging
+                    logging.warning(f"Stock Asset account not found for user {self.user_id}. Journal entries not created for invoice item.")
                     return
+                debit_account_id = stock_account_id
             elif nominal_account_id is not None:
                 # Expense line - debit the specified expense account
                 debit_account_id = nominal_account_id
             else:
                 # No account specified, skip logging
+                import logging
+                logging.warning(f"No debit account specified for invoice item. Journal entries not created.")
                 return
             
-            # Log the transaction
+            # Log the net purchase transaction
             self.transaction_logger.log_supplier_invoice_item(
                 user_id=self.user_id,
                 invoice_date=invoice_date,
@@ -326,6 +335,22 @@ class InvoiceController(QObject):
                 amount=amount,
                 description=description
             )
+            
+            # Log VAT Input if VAT code is 'S' (Standard rate 20%)
+            if vat_code == 'S':
+                vat_amount = amount * 0.20  # 20% VAT
+                vat_input_account_id = find_vat_input_account(self.user_id, self.invoice_model.db_path)
+                if vat_input_account_id:
+                    self.transaction_logger.log_vat_input(
+                        user_id=self.user_id,
+                        invoice_date=invoice_date,
+                        invoice_number=invoice_number,
+                        supplier_name=supplier_name,
+                        vat_input_account_id=vat_input_account_id,
+                        creditor_account_id=creditor_account_id,
+                        vat_amount=vat_amount,
+                        description=description
+                    )
         except Exception as e:
             # Don't fail the item creation if logging fails
             # Log error but continue
@@ -343,9 +368,47 @@ class InvoiceController(QObject):
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # Get old item data before update for reversal
+        import sqlite3
+        old_item_data = None
+        try:
+            with sqlite3.connect(self.invoice_model.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT invoice_id, product_id, nominal_account_id, description, quantity, unit_price, vat_code
+                    FROM invoice_items WHERE id = ?
+                """, (item_id,))
+                result = cursor.fetchone()
+                if result:
+                    old_item_data = {
+                        'invoice_id': result[0],
+                        'product_id': result[1],
+                        'nominal_account_id': result[2],
+                        'description': result[3],
+                        'quantity': result[4],
+                        'unit_price': result[5],
+                        'vat_code': result[6] or 'S'
+                    }
+        except Exception:
+            pass
+        
         success, message = self.invoice_item_model.update(item_id, quantity, unit_price)
         
-        if success:
+        if success and old_item_data:
+            # Reverse old journal entries
+            self._reverse_invoice_item_entries(
+                old_item_data['invoice_id'], old_item_data['product_id'],
+                old_item_data['nominal_account_id'], old_item_data['description'],
+                old_item_data['quantity'], old_item_data['unit_price'],
+                old_item_data['vat_code']
+            )
+            
+            # Create new journal entries with updated amounts
+            self._log_invoice_item_transaction(
+                old_item_data['invoice_id'], old_item_data['product_id'],
+                old_item_data['nominal_account_id'], old_item_data['description'],
+                quantity, unit_price, old_item_data['vat_code'], item_id
+            )
             self.item_updated.emit()
         
         return success, message
@@ -360,12 +423,97 @@ class InvoiceController(QObject):
         Returns:
             Tuple of (success: bool, message: str)
         """
+        # Get item data before deletion for reversal
+        import sqlite3
+        item_data = None
+        try:
+            with sqlite3.connect(self.invoice_model.db_path, timeout=10.0) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT invoice_id, product_id, nominal_account_id, description, quantity, unit_price, vat_code
+                    FROM invoice_items WHERE id = ?
+                """, (item_id,))
+                result = cursor.fetchone()
+                if result:
+                    item_data = {
+                        'invoice_id': result[0],
+                        'product_id': result[1],
+                        'nominal_account_id': result[2],
+                        'description': result[3],
+                        'quantity': result[4],
+                        'unit_price': result[5],
+                        'vat_code': result[6] or 'S'
+                    }
+        except Exception:
+            pass
+        
         success, message = self.invoice_item_model.delete(item_id)
         
-        if success:
+        if success and item_data:
+            # Reverse journal entries
+            self._reverse_invoice_item_entries(
+                item_data['invoice_id'], item_data['product_id'],
+                item_data['nominal_account_id'], item_data['description'],
+                item_data['quantity'], item_data['unit_price'],
+                item_data['vat_code']
+            )
             self.item_deleted.emit()
         
         return success, message
+    
+    def _reverse_invoice_item_entries(self, invoice_id: int, product_id: Optional[int],
+                                     nominal_account_id: Optional[int], description: str,
+                                     quantity: float, unit_price: float, vat_code: str):
+        """
+        Reverse journal entries for an invoice item.
+        
+        Args:
+            invoice_id: Invoice ID
+            product_id: Product ID
+            nominal_account_id: Nominal account ID
+            description: Item description
+            quantity: Quantity
+            unit_price: Unit price
+            vat_code: VAT code
+        """
+        try:
+            # Get invoice details
+            invoice = self.invoice_model.get_by_id(invoice_id, self.user_id)
+            if not invoice:
+                return
+            
+            invoice_number = invoice.get('invoice_number', '')
+            invoice_date_str = invoice.get('invoice_date')
+            
+            # Parse invoice date
+            try:
+                if isinstance(invoice_date_str, str):
+                    invoice_date = datetime.strptime(invoice_date_str, '%Y-%m-%d').date()
+                else:
+                    invoice_date = invoice_date_str
+            except (ValueError, AttributeError):
+                invoice_date = datetime.now().date()
+            
+            # Find entries to reverse by reference and description
+            entries_to_reverse = self.transaction_logger.find_entries_by_reference_and_description(
+                self.user_id, invoice_number, description
+            )
+            
+            # Also find VAT entries if applicable
+            if vat_code == 'S':
+                vat_entries = self.transaction_logger.find_entries_by_reference_and_description(
+                    self.user_id, invoice_number, f"VAT Input: {description}"
+                )
+                entries_to_reverse.extend(vat_entries)
+            
+            # Reverse all found entries
+            for entry in entries_to_reverse:
+                self.transaction_logger.reverse_journal_entry(
+                    entry['id'], self.user_id, invoice_date, f"REV-{invoice_number}"
+                )
+        except Exception:
+            # Don't fail if reversal fails
+            pass
     
     def get_invoice_items(self, invoice_id: int) -> list:
         """

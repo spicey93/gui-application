@@ -118,7 +118,7 @@ class ReportsController(QObject):
     
     def generate_vat_return(self, start_date: date, end_date: date) -> List[Dict]:
         """
-        Generate VAT return for date range.
+        Generate VAT return for date range from journal entries.
         
         Args:
             start_date: Start date
@@ -132,61 +132,45 @@ class ReportsController(QObject):
         
         try:
             with sqlite3.connect(db_path, timeout=10.0) as conn:
-                conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
                 
-                # Get sales invoices with VAT in date range
-                cursor.execute("""
-                    SELECT 
-                        sii.vat_code,
-                        SUM(sii.line_total) as net_amount,
-                        SUM(CASE 
-                            WHEN sii.vat_code = 'S' THEN sii.line_total * 0.20
-                            ELSE 0.0
-                        END) as vat_amount
-                    FROM sales_invoice_items sii
-                    JOIN sales_invoices si ON sii.sales_invoice_id = si.id
-                    WHERE si.user_id = ?
-                    AND si.document_date >= ?
-                    AND si.document_date <= ?
-                    AND si.document_type = 'invoice'
-                    GROUP BY sii.vat_code
-                """, (self.user_id, start_date.isoformat(), end_date.isoformat()))
+                # Get VAT Output account ID
+                from utils.account_finder import find_vat_output_account
+                vat_output_account_id = find_vat_output_account(self.user_id, db_path)
                 
-                sales_vat = {}
+                # Get VAT Input account ID
+                from utils.account_finder import find_vat_input_account
+                vat_input_account_id = find_vat_input_account(self.user_id, db_path)
+                
+                # Calculate VAT Output from journal entries (credits to VAT Output account)
                 total_output_vat = 0.0
-                for row in cursor.fetchall():
-                    vat_code = row['vat_code'] or 'S'
-                    net_amount = row['net_amount'] or 0.0
-                    vat_amount = row['vat_amount'] or 0.0
-                    sales_vat[vat_code] = {'net': net_amount, 'vat': vat_amount}
-                    total_output_vat += vat_amount
+                if vat_output_account_id:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0.0)
+                        FROM journal_entries
+                        WHERE credit_account_id = ?
+                        AND user_id = ?
+                        AND entry_date >= ?
+                        AND entry_date <= ?
+                        AND transaction_type = 'Sales Invoice VAT'
+                    """, (vat_output_account_id, self.user_id, start_date.isoformat(), end_date.isoformat()))
+                    result = cursor.fetchone()
+                    total_output_vat = result[0] if result else 0.0
                 
-                # Get supplier invoices with VAT in date range
-                cursor.execute("""
-                    SELECT 
-                        ii.vat_code,
-                        SUM(ii.line_total) as net_amount,
-                        SUM(CASE 
-                            WHEN ii.vat_code = 'S' THEN ii.line_total * 0.20
-                            ELSE 0.0
-                        END) as vat_amount
-                    FROM invoice_items ii
-                    JOIN invoices i ON ii.invoice_id = i.id
-                    WHERE i.user_id = ?
-                    AND i.invoice_date >= ?
-                    AND i.invoice_date <= ?
-                    GROUP BY ii.vat_code
-                """, (self.user_id, start_date.isoformat(), end_date.isoformat()))
-                
-                purchase_vat = {}
+                # Calculate VAT Input from journal entries (debits to VAT Input account)
                 total_input_vat = 0.0
-                for row in cursor.fetchall():
-                    vat_code = row['vat_code'] or 'S'
-                    net_amount = row['net_amount'] or 0.0
-                    vat_amount = row['vat_amount'] or 0.0
-                    purchase_vat[vat_code] = {'net': net_amount, 'vat': vat_amount}
-                    total_input_vat += vat_amount
+                if vat_input_account_id:
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount), 0.0)
+                        FROM journal_entries
+                        WHERE debit_account_id = ?
+                        AND user_id = ?
+                        AND entry_date >= ?
+                        AND entry_date <= ?
+                        AND transaction_type = 'Supplier Invoice VAT'
+                    """, (vat_input_account_id, self.user_id, start_date.isoformat(), end_date.isoformat()))
+                    result = cursor.fetchone()
+                    total_input_vat = result[0] if result else 0.0
                 
                 # Build VAT return data
                 vat_data.append({
@@ -254,8 +238,9 @@ class ReportsController(QObject):
                     })
                     total_income += balance
             
-            # Calculate expenses
+            # Calculate expenses (separate Cost of Sales from other expenses)
             total_expenses = 0.0
+            cost_of_sales = 0.0
             expense_items = []
             for account in expense_accounts:
                 balance = self._calculate_account_balance_for_period(
@@ -264,10 +249,17 @@ class ReportsController(QObject):
                 # For expense accounts, debits increase, credits decrease
                 # Balance = opening + debits - credits
                 if abs(balance) > 0.01:
-                    expense_items.append({
-                        'account': f"{account['account_code']} - {account['account_name']}",
-                        'amount': -balance  # Expenses shown as negative
-                    })
+                    account_subtype = account.get('account_subtype', '')
+                    expense_amount = -balance  # Expenses shown as negative
+                    
+                    # Track Cost of Sales separately
+                    if account_subtype == 'Cost of Sales':
+                        cost_of_sales += balance
+                    else:
+                        expense_items.append({
+                            'account': f"{account['account_code']} - {account['account_name']}",
+                            'amount': expense_amount
+                        })
                     total_expenses += balance
             
             # Build P&L data
@@ -276,9 +268,21 @@ class ReportsController(QObject):
             pl_data.append({'account': 'Total Income', 'amount': total_income})
             
             pl_data.append({'account': '', 'amount': 0.0})  # Spacer
+            pl_data.append({'account': 'COST OF SALES', 'amount': 0.0})  # Header
+            if abs(cost_of_sales) > 0.01:
+                pl_data.append({'account': 'Cost of Sales', 'amount': -cost_of_sales})
+            pl_data.append({'account': 'Total Cost of Sales', 'amount': -cost_of_sales})
+            
+            # Calculate Gross Profit
+            gross_profit = total_income - cost_of_sales
+            pl_data.append({'account': '', 'amount': 0.0})  # Spacer
+            pl_data.append({'account': 'GROSS PROFIT', 'amount': gross_profit})
+            
+            pl_data.append({'account': '', 'amount': 0.0})  # Spacer
             pl_data.append({'account': 'EXPENSES', 'amount': 0.0})  # Header
             pl_data.extend(expense_items)
-            pl_data.append({'account': 'Total Expenses', 'amount': -total_expenses})
+            other_expenses = total_expenses - cost_of_sales
+            pl_data.append({'account': 'Total Expenses', 'amount': -other_expenses})
             
             pl_data.append({'account': '', 'amount': 0.0})  # Spacer
             net_profit = total_income - total_expenses
@@ -367,6 +371,11 @@ class ReportsController(QObject):
         try:
             accounts = self.nominal_account_model.get_all(self.user_id)
             
+            # Get VAT account IDs
+            from utils.account_finder import find_vat_input_account, find_vat_output_account
+            vat_input_account_id = find_vat_input_account(self.user_id, db_path)
+            vat_output_account_id = find_vat_output_account(self.user_id, db_path)
+            
             # Group accounts by type
             assets = [a for a in accounts if a.get('account_type') == 'Asset']
             liabilities = [a for a in accounts if a.get('account_type') == 'Liability']
@@ -375,29 +384,55 @@ class ReportsController(QObject):
             # Calculate totals
             total_assets = 0.0
             asset_items = []
+            vat_input_balance = 0.0
             for account in assets:
                 balance = self._calculate_account_balance_as_at(
                     account['id'], account['opening_balance'], 'Asset', as_at_date
                 )
                 if abs(balance) > 0.01:
-                    asset_items.append({
-                        'account': f"{account['account_code']} - {account['account_name']}",
-                        'amount': balance
-                    })
+                    # Track VAT Input separately
+                    if account['id'] == vat_input_account_id:
+                        vat_input_balance = balance
+                    else:
+                        asset_items.append({
+                            'account': f"{account['account_code']} - {account['account_name']}",
+                            'amount': balance
+                        })
                     total_assets += balance
+            
+            # Add VAT Input as separate line item if it exists
+            if abs(vat_input_balance) > 0.01:
+                asset_items.append({
+                    'account': 'VAT Input (Recoverable)',
+                    'amount': vat_input_balance
+                })
             
             total_liabilities = 0.0
             liability_items = []
+            vat_output_balance = 0.0
             for account in liabilities:
                 balance = self._calculate_account_balance_as_at(
                     account['id'], account['opening_balance'], 'Liability', as_at_date
                 )
                 if abs(balance) > 0.01:
-                    liability_items.append({
-                        'account': f"{account['account_code']} - {account['account_name']}",
-                        'amount': balance
-                    })
+                    # Track VAT Output separately
+                    if account['id'] == vat_output_account_id:
+                        vat_output_balance = balance
+                    else:
+                        liability_items.append({
+                            'account': f"{account['account_code']} - {account['account_name']}",
+                            'amount': balance
+                        })
                     total_liabilities += balance
+            
+            # Calculate VAT Control (Net VAT = Output - Input)
+            vat_control = vat_output_balance - vat_input_balance
+            if abs(vat_control) > 0.01:
+                liability_items.append({
+                    'account': 'VAT Control (Net Payable)',
+                    'amount': vat_control
+                })
+                total_liabilities += vat_control
             
             total_equity = 0.0
             equity_items = []

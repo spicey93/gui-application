@@ -37,7 +37,7 @@ def find_trade_debtors_account(user_id: int, db_path: str = "data/app.db") -> Op
 
 def find_trade_creditors_account(user_id: int, db_path: str = "data/app.db") -> Optional[int]:
     """
-    Find Trade Creditors account (Liability - Current Liability).
+    Find Trade Creditors account (Liability - Current Liability or Purchase Ledger).
     
     Args:
         user_id: User ID
@@ -53,16 +53,26 @@ def find_trade_creditors_account(user_id: int, db_path: str = "data/app.db") -> 
         account_type = account.get('account_type', '')
         account_subtype = account.get('account_subtype', '')
         account_name = account.get('account_name', '').lower()
+        account_code = account.get('account_code', 0)
+        
+        # Look for Purchase Ledger account (code 2100) or accounts with "purchase ledger" in name
+        if account_type == 'Liability':
+            if (account_code == 2100 or 
+                'purchase ledger' in account_name or
+                (account_subtype == 'Purchase Ledger')):
+                return account['id']
         
         # Look for Current Liability account with "creditor" or "payable" in name
         if account_type == 'Liability' and account_subtype == 'Current Liability':
             if 'creditor' in account_name or 'payable' in account_name or 'trade creditor' in account_name:
                 return account['id']
     
-    # Fallback: return first Current Liability account
+    # Fallback: return first Current Liability or Purchase Ledger account
     for account in accounts:
-        if account.get('account_type') == 'Liability' and account.get('account_subtype') == 'Current Liability':
-            return account['id']
+        if account.get('account_type') == 'Liability':
+            if (account.get('account_subtype') in ['Current Liability', 'Purchase Ledger'] or
+                account.get('account_code') == 2100):
+                return account['id']
     
     return None
 
@@ -237,6 +247,70 @@ def find_cost_of_sales_account(user_id: int, db_path: str = "data/app.db") -> Op
     # Fallback: return first Cost of Sales account
     for account in accounts:
         if account.get('account_type') == 'Expense' and account.get('account_subtype') == 'Cost of Sales':
+            return account['id']
+    
+    return None
+
+
+def find_vat_input_account(user_id: int, db_path: str = "data/app.db") -> Optional[int]:
+    """
+    Find VAT Input account (Asset - Current Asset).
+    
+    Args:
+        user_id: User ID
+        db_path: Database path
+        
+    Returns:
+        Account ID or None if not found
+    """
+    nominal_account_model = NominalAccount(db_path)
+    accounts = nominal_account_model.get_all(user_id)
+    
+    for account in accounts:
+        account_type = account.get('account_type', '')
+        account_subtype = account.get('account_subtype', '')
+        account_name = account.get('account_name', '').lower()
+        
+        # Look for VAT Input account
+        if account_type == 'Asset' and account_subtype == 'Current Asset':
+            if 'vat input' in account_name or 'vat recoverable' in account_name or 'input vat' in account_name:
+                return account['id']
+    
+    # Fallback: return first Current Asset account (if no specific VAT Input found)
+    for account in accounts:
+        if account.get('account_type') == 'Asset' and account.get('account_subtype') == 'Current Asset':
+            return account['id']
+    
+    return None
+
+
+def find_vat_output_account(user_id: int, db_path: str = "data/app.db") -> Optional[int]:
+    """
+    Find VAT Output account (Liability - Current Liability).
+    
+    Args:
+        user_id: User ID
+        db_path: Database path
+        
+    Returns:
+        Account ID or None if not found
+    """
+    nominal_account_model = NominalAccount(db_path)
+    accounts = nominal_account_model.get_all(user_id)
+    
+    for account in accounts:
+        account_type = account.get('account_type', '')
+        account_subtype = account.get('account_subtype', '')
+        account_name = account.get('account_name', '').lower()
+        
+        # Look for VAT Output account
+        if account_type == 'Liability' and account_subtype == 'Current Liability':
+            if 'vat output' in account_name or 'vat collected' in account_name or 'output vat' in account_name:
+                return account['id']
+    
+    # Fallback: return first Current Liability account (if no specific VAT Output found)
+    for account in accounts:
+        if account.get('account_type') == 'Liability' and account.get('account_subtype') == 'Current Liability':
             return account['id']
     
     return None
