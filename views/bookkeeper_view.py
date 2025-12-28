@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal, QEvent, QDate
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
+from views.widgets.table_config import TableConfig
 from utils.styles import apply_theme
 from datetime import date
 
@@ -88,18 +89,10 @@ class BookkeeperView(BaseTabbedView):
         self.accounts_table = AccountsTableWidget(self._switch_to_activity_tab)
         self.accounts_table.setColumnCount(4)
         self.accounts_table.setHorizontalHeaderLabels(["Code", "Name", "Category", "Type"])
-        self.accounts_table.horizontalHeader().setStretchLastSection(True)
         self.accounts_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.accounts_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.accounts_table.setAlternatingRowColors(True)
         self.accounts_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        # Set column widths
-        header = self.accounts_table.horizontalHeader()
-        header.resizeSection(0, 100)
-        header.resizeSection(1, 250)
-        header.resizeSection(2, 120)
-        header.resizeSection(3, 150)
         
         # Enable keyboard navigation
         self.accounts_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -128,22 +121,6 @@ class BookkeeperView(BaseTabbedView):
         self.activity_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.activity_table.setAlternatingRowColors(True)
         self.activity_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        # Set column widths
-        activity_header = self.activity_table.horizontalHeader()
-        activity_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        activity_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        activity_header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
-        activity_header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        activity_header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        activity_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-        activity_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Fixed)
-        activity_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
-        activity_header.resizeSection(0, 100)  # Date
-        activity_header.resizeSection(1, 120)  # Type
-        activity_header.resizeSection(2, 100)  # Journal No
-        activity_header.resizeSection(6, 100)  # Debit
-        activity_header.resizeSection(7, 100)  # Credit
         
         activity_layout.addWidget(self.activity_table, stretch=1)
         
@@ -752,8 +729,9 @@ class BookkeeperView(BaseTabbedView):
             # Type column (account_subtype)
             self.accounts_table.setItem(row, 3, QTableWidgetItem(account.get('account_subtype', '')))
         
-        # Resize columns to content
-        self.accounts_table.resizeColumnsToContents()
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.accounts_table)
+        
         header = self.accounts_table.horizontalHeader()
         header.resizeSection(0, 100)
         header.resizeSection(1, 250)
@@ -816,6 +794,9 @@ class BookkeeperView(BaseTabbedView):
                 credit_item = QTableWidgetItem(f"£{amount:,.2f}")
                 credit_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.activity_table.setItem(row, 7, credit_item)
+        
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.activity_table)
     
     def populate_transfer_accounts(self, accounts: List[Dict[str, any]], from_combo: QComboBox, to_combo: QComboBox):
         """Populate account combos in transfer dialog."""

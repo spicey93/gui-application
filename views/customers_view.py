@@ -8,6 +8,7 @@ from PySide6.QtCore import Signal, Qt, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
+from views.widgets.table_config import TableConfig
 
 
 class CustomersTableWidget(QTableWidget):
@@ -186,21 +187,11 @@ class CustomersView(BaseTabbedView):
         self.customers_table.setHorizontalHeaderLabels(
             ["ID", "Name", "Phone", "City", "Postcode"]
         )
-        self.customers_table.horizontalHeader().setStretchLastSection(True)
         self.customers_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.customers_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.customers_table.setAlternatingRowColors(True)
         self.customers_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.customers_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
-        # Set column resize modes - ID fixed, Name stretches, others resize to contents
-        header = self.customers_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.resizeSection(0, 60)
         
         # Selection changed
         self.customers_table.itemSelectionChanged.connect(
@@ -509,6 +500,9 @@ class CustomersView(BaseTabbedView):
             self.customers_table.setItem(
                 row, 4, QTableWidgetItem(customer.get("postcode", ""))
             )
+        
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.customers_table)
         
         # Auto-select first row if data exists
         if filtered_customers and self.customers_table.rowCount() > 0:

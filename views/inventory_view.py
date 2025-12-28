@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QKeyEvent
 from typing import List, Dict
 from views.base_view import BaseTabbedView
+from views.widgets.table_config import TableConfig
 
 
 class InventoryTableWidget(QTableWidget):
@@ -49,17 +50,10 @@ class InventoryView(BaseTabbedView):
         self.inventory_table = InventoryTableWidget()
         self.inventory_table.setColumnCount(3)
         self.inventory_table.setHorizontalHeaderLabels(["Stock Number", "Description", "Stock Quantity"])
-        self.inventory_table.horizontalHeader().setStretchLastSection(True)
         self.inventory_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.inventory_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.inventory_table.setAlternatingRowColors(True)
         self.inventory_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        # Set column resize modes - Description stretches, others resize to contents
-        header = self.inventory_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         
         # Enable keyboard navigation
         self.inventory_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -115,7 +109,8 @@ class InventoryView(BaseTabbedView):
             stock_qty_str = f"{stock_qty:.2f}" if isinstance(stock_qty, (int, float)) else str(stock_qty)
             self.inventory_table.setItem(row, 2, QTableWidgetItem(stock_qty_str))
         
-        # Columns will auto-resize based on their resize modes
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.inventory_table)
         
         # Auto-select first row and set focus to table if data exists
         if len(inventory_items) > 0:

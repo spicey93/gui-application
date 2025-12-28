@@ -1,7 +1,8 @@
 """Table configuration helper utilities."""
-from PySide6.QtWidgets import QTableWidget, QHeaderView, QSizePolicy
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QTableWidgetItem
+from PySide6.QtCore import Qt, QTimer
 from typing import List, Dict, Optional, Union
+from PySide6.QtGui import QFontMetrics
 
 
 class TableConfig:
@@ -97,4 +98,100 @@ class TableConfig:
                     current_width = header.sectionSize(col)
                     if current_width < width:
                         header.resizeSection(col, width)
+    
+    @staticmethod
+    def distribute_columns_proportionally(table: QTableWidget, deferred: bool = True) -> None:
+        """
+        Distribute column widths proportionally based on max content length,
+        ensuring the table takes up 100% of available width.
+        
+        This function:
+        1. Calculates the maximum content width for each column (including header)
+        2. Distributes column widths proportionally based on those max widths
+        3. Ensures the table fills 100% of available width
+        
+        Args:
+            table: The QTableWidget to configure
+            deferred: If True, use QTimer to defer execution until viewport has valid width
+        """
+        if table.columnCount() == 0:
+            return
+        
+        def _do_distribute() -> None:
+            """Internal function to perform the distribution."""
+            if table.columnCount() == 0:
+                return
+            
+            header = table.horizontalHeader()
+            font_metrics = QFontMetrics(table.font())
+            
+            # Calculate max content width for each column
+            max_widths = []
+            for col in range(table.columnCount()):
+                max_width = 0
+                
+                # Check header text width
+                header_text = header.model().headerData(col, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+                if header_text:
+                    header_width = font_metrics.horizontalAdvance(str(header_text)) + 40  # Add padding
+                    max_width = max(max_width, header_width)
+                
+                # Check all cell content widths in this column
+                for row in range(table.rowCount()):
+                    item = table.item(row, col)
+                    if item:
+                        text = item.text()
+                        if text:
+                            text_width = font_metrics.horizontalAdvance(text) + 20  # Add padding
+                            max_width = max(max_width, text_width)
+                
+                # Ensure minimum width
+                max_width = max(max_width, 50)
+                max_widths.append(max_width)
+            
+            # Calculate total width needed
+            total_content_width = sum(max_widths)
+            
+            # Get viewport width
+            viewport_width = table.viewport().width()
+            if viewport_width <= 0:
+                # Try to get width from parent
+                parent = table.parent()
+                if parent:
+                    viewport_width = parent.width() - 100  # Estimate with margins
+                if viewport_width <= 0:
+                    # Use content-based calculation as fallback
+                    viewport_width = max(total_content_width, 800)
+            
+            # Distribute widths proportionally
+            if total_content_width > 0:
+                # Calculate proportional widths
+                proportions = [w / total_content_width for w in max_widths]
+                
+                # Set all columns to Interactive mode (allows manual resizing while maintaining proportions)
+                for col in range(table.columnCount()):
+                    header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+                
+                # Distribute available width proportionally
+                for col in range(table.columnCount()):
+                    proportional_width = int(viewport_width * proportions[col])
+                    header.resizeSection(col, proportional_width)
+            else:
+                # Fallback: equal distribution
+                equal_width = max(50, viewport_width // table.columnCount())
+                for col in range(table.columnCount()):
+                    header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+                    header.resizeSection(col, equal_width)
+            
+            # Ensure table takes up 100% width
+            table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            
+            # Set stretch last section to false to maintain proportional widths
+            header.setStretchLastSection(False)
+        
+        if deferred:
+            # Use QTimer to defer execution until viewport has valid width
+            QTimer.singleShot(0, _do_distribute)
+        else:
+            _do_distribute()
 

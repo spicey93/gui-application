@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable, TYPE_CHECKING
 from views.base_view import BaseTabbedView
+from views.widgets.table_config import TableConfig
 from utils.styles import apply_theme
 
 if TYPE_CHECKING:
@@ -112,19 +113,6 @@ class ServicesView(BaseTabbedView):
         self.services_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.services_table.setAlternatingRowColors(True)
         self.services_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        # Set column resize modes
-        header = self.services_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
-        header.resizeSection(0, 80)
         
         # Enable keyboard navigation
         self.services_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -401,6 +389,9 @@ class ServicesView(BaseTabbedView):
             
             # VAT Code
             self.services_table.setItem(row, 8, QTableWidgetItem(service.get('vat_code', 'S')))
+        
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.services_table)
     
     def add_service(self):
         """Show dialog to add a new service."""

@@ -9,6 +9,7 @@ from PySide6.QtCore import Signal, Qt, QDate
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
+from views.widgets.table_config import TableConfig
 from views.widgets.common_dialogs import show_confirmation_dialog
 
 
@@ -398,22 +399,11 @@ class SalesView(BaseTabbedView):
         self.documents_table.setHorizontalHeaderLabels(
             ["ID", "Customer", "Number", "Date", "Type", "Status", "Total"]
         )
-        self.documents_table.horizontalHeader().setStretchLastSection(True)
         self.documents_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.documents_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.documents_table.setAlternatingRowColors(True)
         self.documents_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.documents_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
-        # Set column resize modes
-        header = self.documents_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.resizeSection(0, 60)
         
         # Selection changed
         self.documents_table.itemSelectionChanged.connect(self._on_document_selection_changed)
@@ -463,7 +453,6 @@ class SalesView(BaseTabbedView):
         self.items_table.setHorizontalHeaderLabels(
             ["ID", "Stock Number", "Description", "Qty", "Unit Price", "VAT", "Total"]
         )
-        self.items_table.horizontalHeader().setStretchLastSection(True)
         self.items_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.items_table.setAlternatingRowColors(True)
         self.items_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -792,6 +781,9 @@ class SalesView(BaseTabbedView):
             self.documents_table.setItem(row, 4, QTableWidgetItem(document.get('document_type', '')))
             self.documents_table.setItem(row, 5, QTableWidgetItem(document.get('status', '')))
             self.documents_table.setItem(row, 6, QTableWidgetItem(f"£{document.get('total', 0.0):.2f}"))
+        
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.documents_table)
     
     def load_items(self, items: List[Dict], document: Optional[Dict] = None) -> None:
         """Load items into the items table."""
@@ -814,6 +806,9 @@ class SalesView(BaseTabbedView):
             vat_code = item.get('vat_code', 'S')
             if vat_code == 'S':
                 vat_amount += item.get('line_total', 0.0) * 0.20
+        
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.items_table)
         
         # Update totals label
         if document:

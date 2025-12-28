@@ -6,9 +6,10 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox, QSpinBox, QComboBox, QTextEdit, QCompleter, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, QDate, QEvent, QStringListModel
-from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence, QCloseEvent
+from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence, QCloseEvent, QCursor
 from typing import List, Dict, Optional, Callable, TYPE_CHECKING
 from views.base_view import BaseTabbedView
+from views.widgets.table_config import TableConfig
 from utils.styles import apply_theme
 
 if TYPE_CHECKING:
@@ -157,19 +158,10 @@ class SuppliersView(BaseTabbedView):
         self.suppliers_table = SuppliersTableWidget(self._switch_to_details_tab)
         self.suppliers_table.setColumnCount(4)
         self.suppliers_table.setHorizontalHeaderLabels(["ID", "Account Number", "Name", "Outstanding Balance"])
-        self.suppliers_table.horizontalHeader().setStretchLastSection(True)
         self.suppliers_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.suppliers_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.suppliers_table.setAlternatingRowColors(True)
         self.suppliers_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        # Set column resize modes - ID fixed, Name stretches, others resize to contents
-        header = self.suppliers_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.resizeSection(0, 80)
         
         # Enable keyboard navigation
         self.suppliers_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -270,13 +262,6 @@ class SuppliersView(BaseTabbedView):
         self.invoices_table = InvoicesTableWidget(self._handle_invoice_enter)
         self.invoices_table.setColumnCount(6)
         self.invoices_table.setHorizontalHeaderLabels(["Invoice #", "Date", "Supplier", "Total", "Outstanding", "Status"])
-        header = self.invoices_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.invoices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.invoices_table.setAlternatingRowColors(True)
         self.invoices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -296,13 +281,6 @@ class SuppliersView(BaseTabbedView):
         self.payments_table = PaymentsTableWidget(self._handle_payment_enter)
         self.payments_table.setColumnCount(6)
         self.payments_table.setHorizontalHeaderLabels(["Date", "Amount", "Supplier", "Method", "Reference", "Unallocated"])
-        header = self.payments_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
         self.payments_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.payments_table.setAlternatingRowColors(True)
         self.payments_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -399,15 +377,17 @@ class SuppliersView(BaseTabbedView):
                 self.details_form.hide()
         elif index == 2:  # Invoices tab
             self._refresh_invoices_tab()
-            # Force table to recalculate column widths when tab becomes visible
-            self._resize_invoices_table()
+            # Distribute columns proportionally when tab becomes visible
+            if self.invoices_table.rowCount() > 0:
+                TableConfig.distribute_columns_proportionally(self.invoices_table)
             # Ensure first row is selected after refresh
             if self.invoices_table.rowCount() > 0 and not self.invoices_table.selectedItems():
                 self.invoices_table.selectRow(0)
         elif index == 3:  # Payments tab
             self._refresh_payments_tab()
-            # Force table to recalculate column widths when tab becomes visible
-            self._resize_payments_table()
+            # Distribute columns proportionally when tab becomes visible
+            if self.payments_table.rowCount() > 0:
+                TableConfig.distribute_columns_proportionally(self.payments_table)
             # Ensure first row is selected after refresh
             if self.payments_table.rowCount() > 0 and not self.payments_table.selectedItems():
                 self.payments_table.selectRow(0)
@@ -1118,8 +1098,8 @@ class SuppliersView(BaseTabbedView):
             else:
                 self.suppliers_table.setItem(row, 3, QTableWidgetItem("£0.00"))
         
-        # Resize columns to content
-        self.suppliers_table.resizeColumnsToContents()
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.suppliers_table)
         header = self.suppliers_table.horizontalHeader()
         header.resizeSection(0, 80)
         if len(filtered_suppliers) > 0:
@@ -1168,10 +1148,10 @@ class SuppliersView(BaseTabbedView):
             
             self.invoices_table.setItem(row, 5, QTableWidgetItem(invoice.get('status', '')))
         
-        # Trigger resize to ensure columns fill available space
-        self._resize_invoices_table()
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.invoices_table)
         
-        # Select first row if available (after resize to ensure proper selection)
+        # Select first row if available
         if len(invoices) > 0:
             self.invoices_table.selectRow(0)
     
@@ -1207,46 +1187,13 @@ class SuppliersView(BaseTabbedView):
                 unallocated = self.payment_controller.get_payment_unallocated_amount(payment_id)
             self.payments_table.setItem(row, 5, QTableWidgetItem(f"£{unallocated:.2f}"))
         
-        # Trigger resize to ensure columns fill available space
-        self._resize_payments_table()
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.payments_table)
         
-        # Select first row if available (after resize to ensure proper selection)
+        # Select first row if available
         if len(payments) > 0:
             self.payments_table.selectRow(0)
     
-    def _resize_invoices_table(self):
-        """Resize invoices table columns to fill available space."""
-        if not self.invoices_table.isVisible():
-            # Table is not visible, schedule resize for when it becomes visible
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(100, self._resize_invoices_table)
-            return
-        
-        header = self.invoices_table.horizontalHeader()
-        # Resize ResizeToContents columns to their optimal size
-        # This forces Qt to recalculate column widths
-        header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
-        # Restore the stretch mode for column 2 (Supplier)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        # Force the table to update its layout
-        self.invoices_table.doItemsLayout()
-    
-    def _resize_payments_table(self):
-        """Resize payments table columns to fill available space."""
-        if not self.payments_table.isVisible():
-            # Table is not visible, schedule resize for when it becomes visible
-            from PySide6.QtCore import QTimer
-            QTimer.singleShot(100, self._resize_payments_table)
-            return
-        
-        header = self.payments_table.horizontalHeader()
-        # Resize ResizeToContents columns to their optimal size
-        # This forces Qt to recalculate column widths
-        header.resizeSections(QHeaderView.ResizeMode.ResizeToContents)
-        # Restore the stretch mode for column 2 (Supplier)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        # Force the table to update its layout
-        self.payments_table.doItemsLayout()
     
     def show_success(self, message: str):
         """Display a success message."""
@@ -1680,6 +1627,18 @@ class SuppliersView(BaseTabbedView):
                     invoice_id, product_id, stock_num, desc, qty, price, vat_code, nominal_account_id
                 )
             
+            # If manual VAT override is set, update totals directly instead of recalculating
+            if manual_vat_override[0] is not None:
+                # Calculate subtotal
+                subtotal = sum(item['quantity'] * item['unit_price'] for item in invoice_items_data)
+                manual_vat_amount = manual_vat_override[0]
+                total = subtotal + manual_vat_amount
+                # Update invoice totals directly to save the manual VAT override
+                self.invoice_controller.update_invoice_totals(invoice_id, subtotal, manual_vat_amount, total)
+            else:
+                # Recalculate totals normally
+                self.invoice_controller.recalculate_invoice_totals(invoice_id)
+            
             QMessageBox.information(dialog, "Success", "Invoice created successfully")
             dialog.accept()
             
@@ -1749,8 +1708,11 @@ class SuppliersView(BaseTabbedView):
         else:
             dialog.setWindowTitle("Add Products to Invoice")
         dialog.setModal(True)
-        dialog.setMinimumSize(900, 800)
+        dialog.setMinimumSize(900, 600)  # Reduced minimum height to allow more flexibility
         dialog.resize(900, 800)
+        # Make dialog resizable to allow user to adjust size
+        from PySide6.QtWidgets import QSizePolicy
+        dialog.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         apply_theme(dialog)
         
         # Override closeEvent to show confirmation
@@ -1874,6 +1836,13 @@ class SuppliersView(BaseTabbedView):
             def __init__(self, add_callback):
                 super().__init__()
                 self.add_callback = add_callback
+                # Enable mouse tracking to prevent cursor from disappearing during scroll
+                self.setMouseTracking(True)
+                viewport = self.viewport()
+                viewport.setMouseTracking(True)
+                # Ensure cursor is always visible and properly tracked
+                viewport.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+                viewport.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
             
             def keyPressEvent(self, event):
                 if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
@@ -1883,6 +1852,22 @@ class SuppliersView(BaseTabbedView):
                         event.accept()
                         return
                 super().keyPressEvent(event)
+            
+            def wheelEvent(self, event):
+                """Override wheelEvent to maintain cursor visibility during scrolling."""
+                # Ensure focus is maintained during scrolling
+                if not self.hasFocus():
+                    self.setFocus()
+                # Force cursor to remain visible during scroll
+                viewport = self.viewport()
+                viewport.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+                super().wheelEvent(event)
+            
+            def enterEvent(self, event):
+                """Ensure cursor is visible when mouse enters the widget."""
+                viewport = self.viewport()
+                viewport.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+                super().enterEvent(event)
         
         # Message label for no results
         no_results_label = QLabel()
@@ -1902,6 +1887,9 @@ class SuppliersView(BaseTabbedView):
         products_table.setAlternatingRowColors(True)
         products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         products_table.setMinimumHeight(300)
+        # Ensure viewport maintains cursor visibility
+        products_table.viewport().setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        products_table.viewport().setMouseTracking(True)
         products_layout.addWidget(products_table, stretch=1)
         
         # Store filtered products for Enter key (includes both products and catalogue tyres)

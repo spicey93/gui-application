@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QKeyEvent, QShortcut, QKeySequence
 from typing import List, Dict, Optional, Callable
 from views.base_view import BaseTabbedView
+from views.widgets.table_config import TableConfig
 from utils.styles import apply_theme
 from utils.tyre_parser import extract_tyre_specs, validate_tyre_description
 from utils.account_finder import (
@@ -109,19 +110,10 @@ class ProductsView(BaseTabbedView):
         self.products_table = ProductsTableWidget(self._open_selected_product)
         self.products_table.setColumnCount(4)
         self.products_table.setHorizontalHeaderLabels(["ID", "Stock Number", "Description", "Type"])
-        self.products_table.horizontalHeader().setStretchLastSection(True)
         self.products_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.products_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.products_table.setAlternatingRowColors(True)
         self.products_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        # Set column resize modes - ID fixed, others stretch
-        header = self.products_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        header.resizeSection(0, 80)
         
         # Enable keyboard navigation
         self.products_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -159,16 +151,6 @@ class ProductsView(BaseTabbedView):
         self.audit_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.audit_table.setAlternatingRowColors(True)
         self.audit_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        # Set column resize modes
-        audit_header = self.audit_table.horizontalHeader()
-        audit_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        audit_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        audit_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        audit_header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        audit_header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        audit_header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        audit_header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         
         audit_layout.addWidget(self.audit_table, stretch=1)
         
@@ -1639,13 +1621,8 @@ class ProductsView(BaseTabbedView):
             self.products_table.setItem(row, 2, QTableWidgetItem(product.get('description', '')))
             self.products_table.setItem(row, 3, QTableWidgetItem(product.get('type', '')))
         
-        # Resize columns to content
-        self.products_table.resizeColumnsToContents()
-        header = self.products_table.horizontalHeader()
-        header.resizeSection(0, 80)
-        if len(filtered_products) > 0:
-            header.resizeSection(1, 150)
-            header.resizeSection(2, 300)
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.products_table)
         
         # Auto-select first row and set focus to table if data exists
         if len(filtered_products) > 0:
@@ -1709,6 +1686,9 @@ class ProductsView(BaseTabbedView):
             total = transaction.get('total', 0)
             total_str = f"£{total:.2f}" if isinstance(total, (int, float)) else str(total)
             self.audit_table.setItem(row, 6, QTableWidgetItem(total_str))
+        
+        # Distribute columns proportionally based on content
+        TableConfig.distribute_columns_proportionally(self.audit_table)
         
         # Update label
         if self.selected_product_id:
